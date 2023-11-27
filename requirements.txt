@@ -1,0 +1,5 @@
+Flask
+numpy
+Pillow
+pytesseract
+opencv-python-headless
