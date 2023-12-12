@@ -120,14 +120,29 @@ def analyze_image(image_path, image_name):
     for i in range(len(data['text'])):
         if int(data['conf'][i]) > 10:  # Using only high confidence text
             text = data['text'][i].strip()
-            if text and re.match(r'\b(L?\d{3}(-\d+)?(~\d+)?)\b', text):
-                (x, y, width, height) = (data['left'][i], data['top'][i], data['width'][i], data['height'][i])
+            if text:
                 print(f"{text} (Confidence: {data['conf'][i]}%)")
-                print(f"Location: X: {x}, Y: {y}, Width: {width}, Height: {height}")
-                # Storing extracted data
-                analyzed_results[text] = {
-                    "floor": image_name, "x": x, "y": y, "w": width, "h": height
-                }
+                # Extract room number patterns
+                matches = re.findall(r'\b(L?\d{3}(-\d+)?(~\d+)?)\b', text)
+                for match in matches:
+                    # Check for range or list patterns
+                    if '~' in match[0]:
+                        # Split at '~' and save both parts
+                        start, end = match[0].split('~')
+                        store_room_data(start.strip(), data, i, analyzed_results, image_name)
+                        store_room_data(end.strip(), data, i, analyzed_results, image_name)
+                    elif ',' in match[0]:
+                        # Split at ',' and save each part
+                        split_patterns = match[0].split(',')
+                        for room in split_patterns:
+                            store_room_data(room.strip(), data, i, analyzed_results, image_name)
+                    elif '-' in match[0] and len(match[0].split('-')[0]) == len(match[0].split('-')[1]):
+                        # Split at '-' and save both parts if they have the same length
+                        start, end = match[0].split('-')
+                        store_room_data(start.strip(), data, i, analyzed_results, image_name)
+                        store_room_data(end.strip(), data, i, analyzed_results, image_name)        
+                    else:
+                        store_room_data(match[0], data, i, analyzed_results, image_name)
 
     # Drawing rectangles around detected text on the image
     draw = ImageDraw.Draw(image_after_red)
@@ -142,6 +157,17 @@ def analyze_image(image_path, image_name):
     return analyzed_results
 
 # Utilities
+
+def store_room_data(room_number, data, index, analyzed_results, image_name):
+    # Replace the first character of room_number with image_name
+    room_number = image_name + room_number[1:]
+
+    (x, y, width, height) = (data['left'][index], data['top'][index], data['width'][index], data['height'][index])
+    print(f"- {room_number}: Location: X: {x}, Y: {y}, Width: {width}, Height: {height}")
+    analyzed_results[room_number] = {
+        "floor": image_name, "x": x, "y": y, "w": width, "h": height
+    }
+
 def save_results_to_json(analyzed_results, json_file='map.json'):
     """
     Saves the analyzed results to a JSON file.
@@ -270,6 +296,42 @@ def calculate_arrow_path(center_x, center_y, box_x, box_y, box_w, box_h):
 
     return path
 
+def draw_question_mark(draw, position, size=50, fill="green"):
+    """
+    Draws a question mark at the given position.
+    :param draw: ImageDraw object.
+    :param position: Tuple (x, y) for the position of the question mark.
+    :param size: Size of the question mark.
+    :param fill: Color of the question mark.
+    """
+    font = ImageFont.truetype("arial.ttf", size)
+    draw.text(position, "?", fill=fill, font=font)
+
+def calculate_room_similarity(requested_room, available_rooms):
+    """
+    Calculate similarity score between the requested room and available rooms.
+    :param requested_room: The requested room number as a string.
+    :param available_rooms: List of available room numbers as strings.
+    :return: The most similar room number.
+    """
+    def similarity_score(room1, room2):
+        # 공통 접두사 길이 계산
+        common_prefix_len = len(os.path.commonprefix([room1, room2]))
+
+        # 숫자 부분만 추출
+        num_part1 = re.sub("[^0-9]", "", room1)
+        num_part2 = re.sub("[^0-9]", "", room2)
+
+        # 숫자 차이 계산
+        num_difference = abs(int(num_part1) - int(num_part2)) if num_part1.isdigit() and num_part2.isdigit() else float('inf')
+
+        # 유사도 점수 계산: 숫자 차이가 클수록 유사도 점수 감소
+        return common_prefix_len * 10000 - num_difference
+
+    similarities = [(room, similarity_score(requested_room, room)) for room in available_rooms]
+    return max(similarities, key=lambda x: x[1])[0] if similarities else None
+
+
 # Flask route definitions...
 
 @app.route('/room/<room_number>', methods=['GET'])
@@ -352,19 +414,16 @@ def is_number_in_range(num_str, range_str):
 @app.route('/view/<room_number>', methods=['GET'])
 def view_room_highlighted(room_number):
     analyzed_results = load_results_from_json()
-    numeric_part = int(re.sub("[^0-9]", "", room_number))  # Extract numeric part
 
-    # Check for exact match first
+    # 정확한 매치 또는 가장 유사한 방 찾기
     if room_number in analyzed_results:
         room_info = analyzed_results[room_number]
+        similar_room = None  # 정확한 매치인 경우
     else:
-        # If not an exact match, check for range match
-        for key, value in analyzed_results.items():
-            if is_number_in_range(numeric_part, key):
-                room_info = value
-                break
-        else:
+        similar_room = calculate_room_similarity(room_number, analyzed_results.keys())
+        if not similar_room or similar_room == room_number:  # 유사도가 낮은 경우
             return jsonify({"error": "Room number not found or invalid format"}), 404
+        room_info = analyzed_results[similar_room]
 
     floor_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-map.png")
     if os.path.exists(floor_image_path):
@@ -393,6 +452,15 @@ def view_room_highlighted(room_number):
 
         # 화살표 끝 그리기
         draw_arrow_head(draw, path[-2], path[-1], fill="blue")
+        if similar_room:
+            question_mark_pos = (path[-1][0] + 20, path[-1][1])
+            draw_question_mark(draw, question_mark_pos)
+            font_size = 30 
+            font = ImageFont.truetype("arial.ttf", font_size)
+            message1 = f"Not found requested room [{room_number}]"
+            draw.text((image_center_x + 50, image_center_y), message1, fill="green", font=font)
+            message2 = f"Showing similar room [{similar_room}]"
+            draw.text((image_center_x + 50, image_center_y + 35), message2, fill="green", font=font)
 
         highlighted_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-highlighted.png")
         image.save(highlighted_image_path)
