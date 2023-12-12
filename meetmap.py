@@ -171,9 +171,6 @@ if not os.path.exists(tmp_directory):
 
 analyzed_results = {}
 
-
-# Drawing assets...
-
 def perform_image_analysis():
     directory_path = sys.argv[1]
     results = {}
@@ -185,6 +182,8 @@ def perform_image_analysis():
             results.update(image_results)
     return results
 
+
+# Drawing assets...
 
 def draw_dashed_line(draw, start, end, interval=10, width=1, fill="red"):
     """
@@ -246,20 +245,28 @@ def calculate_arrow_path(center_x, center_y, box_x, box_y, box_w, box_h):
     box_center_x = box_x + box_w / 2
     box_center_y = box_y + box_h / 2
 
-    # 먼저 수직 방향으로 이동
-    if center_y != box_center_y:
-        path.append((center_x, box_center_y))
+    # 화살표가 먼저 수평 방향으로 이동해야 하는지 결정
+    if box_x <= center_x <= box_x + box_w:  # 수평 방향으로 먼저 이동
+        horizontal_target_x = box_center_x
+        path.append((horizontal_target_x, center_y))
 
-    # 수평 방향으로 이동하여 엣지 결정
-    if box_center_x > center_x:  # 사각형이 오른쪽에 있음
-        path.append((box_x, box_center_y))  # 왼쪽 엣지 중앙
-    elif box_center_x < center_x:  # 사각형이 왼쪽에 있음
-        path.append((box_x + box_w, box_center_y))  # 오른쪽 엣지 중앙
-    else:  # 사각형이 수직선상에 있음
-        if center_y > box_center_y:  # 사각형이 위에 있음
-            path.append((center_x, box_y))  # 아래쪽 엣지 중앙
-        elif center_y < box_center_y:  # 사각형이 아래에 있음
-            path.append((center_x, box_y + box_h))  # 윗쪽 엣지 중앙
+        # 수직 방향으로 이동하여 엣지 결정
+        if center_y > box_center_y:  # 박스가 위에 있음
+            vertical_target_y = box_y + box_h  # 아래쪽 엣지 중앙
+        else:  # 박스가 아래에 있음
+            vertical_target_y = box_y  # 윗쪽 엣지 중앙
+        path.append((horizontal_target_x, vertical_target_y))
+    else:  # 수직 방향으로 먼저 이동
+        vertical_target_y = box_center_y
+        path.append((center_x, vertical_target_y))
+
+        # 수평 방향으로 이동하여 엣지 결정
+        if box_center_x > center_x:  # 사각형이 오른쪽에 있음
+            horizontal_target_x = box_x  # 왼쪽 엣지 중앙
+        else:  # 사각형이 왼쪽에 있음
+            horizontal_target_x = box_x + box_w  # 오른쪽 엣지 중앙
+
+        path.append((horizontal_target_x, vertical_target_y))
 
     return path
 
@@ -371,9 +378,9 @@ def view_room_highlighted(room_number):
         room_center_x = room_info['x'] + room_info['w'] // 2
         room_center_y = room_info['y'] + room_info['h'] // 2
 
-        # 사각형 크기를 10% 키움 (중앙을 기준으로)
-        x_expand = room_info['w'] * 0.05
-        y_expand = room_info['h'] * 0.05
+        # 사각형 크기를 20% 키움 (중앙을 기준으로)
+        x_expand = room_info['w'] * 0.1
+        y_expand = room_info['h'] * 0.1
         x, y, w, h = room_info['x'] - x_expand, room_info['y'] - y_expand, room_info['w'] + 2 * x_expand, room_info['h'] + 2 * y_expand
         draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=4)
 
