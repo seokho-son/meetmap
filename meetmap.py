@@ -171,6 +171,9 @@ if not os.path.exists(tmp_directory):
 
 analyzed_results = {}
 
+
+# Drawing assets...
+
 def perform_image_analysis():
     directory_path = sys.argv[1]
     results = {}
@@ -182,6 +185,83 @@ def perform_image_analysis():
             results.update(image_results)
     return results
 
+
+def draw_dashed_line(draw, start, end, interval=10, width=1, fill="red"):
+    """
+    Draws a dashed line between two points.
+    :param draw: ImageDraw object.
+    :param start: Starting point tuple (x, y).
+    :param end: Ending point tuple (x, y).
+    :param interval: Length of each dash.
+    :param width: Line width.
+    :param fill: Line color.
+    """
+    x1, y1 = start
+    x2, y2 = end
+    dx = x2 - x1
+    dy = y2 - y1
+    distance = (dx**2 + dy**2)**0.5
+    dash_count = int(distance // interval)
+    
+    for i in range(dash_count):
+        x_start = x1 + (i * dx) / dash_count
+        y_start = y1 + (i * dy) / dash_count
+        x_end = x1 + ((i + 1) * dx) / dash_count
+        y_end = y1 + ((i + 1) * dy) / dash_count
+        if i % 2 == 0:
+            draw.line([(x_start, y_start), (x_end, y_end)], fill=fill, width=width)
+
+def draw_arrow_head(draw, start, end, arrow_size=10, fill="red"):
+    """
+    Draws an arrow head at the end of a line.
+    :param draw: ImageDraw object.
+    :param start: Starting point tuple (x, y) of the line.
+    :param end: Ending point tuple (x, y) where the arrow head will be drawn.
+    :param arrow_size: Size of the arrow head.
+    :param fill: Arrow color.
+    """
+    # Calculate the angle of the line
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    angle = np.arctan2(dy, dx)
+
+    # Calculate the points of the arrow head
+    arrow_point1 = (end[0] - arrow_size * np.cos(angle - np.pi / 6),
+                    end[1] - arrow_size * np.sin(angle - np.pi / 6))
+    arrow_point2 = (end[0] - arrow_size * np.cos(angle + np.pi / 6),
+                    end[1] - arrow_size * np.sin(angle + np.pi / 6))
+
+    # Draw the arrow head
+    draw.polygon([end, arrow_point1, arrow_point2], fill=fill)
+
+def calculate_arrow_path(center_x, center_y, box_x, box_y, box_w, box_h):
+    """
+    Calculates the path for an arrow from the center of the image to the edge of a box.
+    :param center_x, center_y: Center coordinates of the image.
+    :param box_x, box_y, box_w, box_h: Coordinates and size of the box.
+    :return: A list of points representing the path of the arrow.
+    """
+    path = [(center_x, center_y)]  # 시작점
+
+    box_center_x = box_x + box_w / 2
+    box_center_y = box_y + box_h / 2
+
+    # 먼저 수직 방향으로 이동
+    if center_y != box_center_y:
+        path.append((center_x, box_center_y))
+
+    # 수평 방향으로 이동하여 엣지 결정
+    if box_center_x > center_x:  # 사각형이 오른쪽에 있음
+        path.append((box_x, box_center_y))  # 왼쪽 엣지 중앙
+    elif box_center_x < center_x:  # 사각형이 왼쪽에 있음
+        path.append((box_x + box_w, box_center_y))  # 오른쪽 엣지 중앙
+    else:  # 사각형이 수직선상에 있음
+        if center_y > box_center_y:  # 사각형이 위에 있음
+            path.append((center_x, box_y))  # 아래쪽 엣지 중앙
+        elif center_y < box_center_y:  # 사각형이 아래에 있음
+            path.append((center_x, box_y + box_h))  # 윗쪽 엣지 중앙
+
+    return path
 
 # Flask route definitions...
 
@@ -283,13 +363,36 @@ def view_room_highlighted(room_number):
     if os.path.exists(floor_image_path):
         image = Image.open(floor_image_path)
         draw = ImageDraw.Draw(image)
-        x, y, w, h = room_info['x'], room_info['y'], room_info['w'], room_info['h']
-        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=3)
+
+        # 이미지 중앙 좌표 계산
+        image_center_x, image_center_y = image.size[0] // 2, image.size[1] // 2
+
+        # 사각형 중앙 좌표
+        room_center_x = room_info['x'] + room_info['w'] // 2
+        room_center_y = room_info['y'] + room_info['h'] // 2
+
+        # 사각형 크기를 10% 키움 (중앙을 기준으로)
+        x_expand = room_info['w'] * 0.05
+        y_expand = room_info['h'] * 0.05
+        x, y, w, h = room_info['x'] - x_expand, room_info['y'] - y_expand, room_info['w'] + 2 * x_expand, room_info['h'] + 2 * y_expand
+        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=4)
+
+        # 화살표 경로 계산
+        path = calculate_arrow_path(image_center_x, image_center_y, x, y, w, h)
+
+        # 화살표 그리기
+        for i in range(len(path) - 1):
+            draw_dashed_line(draw, path[i], path[i + 1], fill="blue")
+
+        # 화살표 끝 그리기
+        draw_arrow_head(draw, path[-2], path[-1], fill="blue")
+
         highlighted_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-highlighted.png")
         image.save(highlighted_image_path)
         return send_file(highlighted_image_path, mimetype='image/png')
     else:
         return jsonify({"error": "Floor image not found"}), 404
+
 
 
 if __name__ == '__main__':
@@ -311,4 +414,4 @@ if __name__ == '__main__':
         save_results_to_json(analyzed_results, json_file)
 
     # Flask 서버 구동
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=1111)
