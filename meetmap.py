@@ -26,6 +26,10 @@ def analyze_image(image_path, image_name):
     # Enhancing image quality (increasing contrast)
     enhancer = ImageEnhance.Contrast(image)
     enhanced_image = enhancer.enhance(1.01)  # Increasing contrast by 1.01 times
+
+    # Increasing image sharpness
+    enhancer = ImageEnhance.Sharpness(enhanced_image)
+    enhanced_image = enhancer.enhance(1.0)  # Increasing sharpness, value greater than 1.0 makes the image sharper
     enhanced_image.save(os.path.join(tmp_directory, f'{image_name}-0-image_after_enhance.png'))
 
     # Resizing the image
@@ -114,23 +118,72 @@ def analyze_image(image_path, image_name):
     image_for_ocr.save(os.path.join(tmp_directory, f'{image_name}-6-dilated_eroded_image.png'))
 
     # Using Tesseract OCR to extract text and their coordinates from the image
-    config = '--psm 6'
-    data = pytesseract.image_to_data(image_for_ocr, config=config, output_type=pytesseract.Output.DICT)
+    # Function to run OCR on multiple page segmentation modes and combine results
+    def run_ocr_on_all_modes(image, modes):
+        combined_data = {'text': [], 'conf': [], 'left': [], 'top': [], 'width': [], 'height': []}
+        seen = set()  # Set to track seen text and their coordinates
+
+        for mode in modes:
+            try:
+                config = f'--psm {mode}'
+                data = pytesseract.image_to_data(image, config=config, output_type=pytesseract.Output.DICT)
+
+                for i in range(len(data['text'])):
+                    # Create a unique identifier for each text based on its content and position
+                    identifier = (data['text'][i], data['left'][i], data['top'][i], data['width'][i], data['height'][i])
+
+                    if identifier not in seen:
+                        seen.add(identifier)
+                        for key in combined_data.keys():
+                            combined_data[key].append(data[key][i])
+
+            except pytesseract.TesseractError as e:
+                print(f"Error in PSM mode {mode}: {e}")
+            except FileNotFoundError as e:
+                print(f"FileNotFoundError in PSM mode {mode}: {e}")
+                break     
+
+        return combined_data
+
+
+    # Define the list of PSM modes to use
+    psm_modes = [3, 4, 6, 11]
+    # psm_modes = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    
+    # Run OCR using multiple PSM modes and combine the results
+    data = run_ocr_on_all_modes(image_for_ocr, psm_modes)
+
+    draw = ImageDraw.Draw(image_after_red)
+    font_size = 30 
+    font = ImageFont.truetype("arial.ttf", font_size)
+    font_size = 15 
+    fontSmall = ImageFont.truetype("arial.ttf", font_size)
 
     # Parsing the extracted text and coordinates
+    # Drawing rectangles around detected text on the image
     for i in range(len(data['text'])):
-        if int(data['conf'][i]) > 10:  # Using only high confidence text
+        if int(data['conf'][i]) > 1:  # Using low confidence texts as well
             text = data['text'][i].strip()
+            draw.text((data['left'][i], data['top'][i] + data['height'][i]*2), f"{text}({data['conf'][i]}%)", fill="red", font=fontSmall)
             if text:
                 print(f"{text} (Confidence: {data['conf'][i]}%)")
                 # Extract room number patterns
-                matches = re.findall(r'\b(L?\d{3}(-\d+)?(~\d+)?)\b', text)
+                matches = re.findall(r'\b(L?\d{2,3}(-\d+)?(~\d+)?)\b', text)
                 for match in matches:
                     # Check for range or list patterns
                     if '~' in match[0]:
                         # Split at '~' and save both parts
                         start, end = match[0].split('~')
+                        half_width = data['width'][i] // 2
+                        original_left = data['left'][i]  # Save the original 'left' value
+
+                        # Adjust width for the start value and store
+                        data['width'][i] = half_width
                         store_room_data(start.strip(), data, i, analyzed_results, image_name)
+
+                        # Adjust left and width for the end value and store
+                        data['left'][i] = original_left + half_width
+                        data['width'][i] = half_width
                         store_room_data(end.strip(), data, i, analyzed_results, image_name)
                     elif ',' in match[0]:
                         # Split at ',' and save each part
@@ -145,13 +198,9 @@ def analyze_image(image_path, image_name):
                     else:
                         store_room_data(match[0], data, i, analyzed_results, image_name)
 
-    # Drawing rectangles around detected text on the image
-    draw = ImageDraw.Draw(image_after_red)
-    font = ImageFont.load_default()
-
     for text, coords in analyzed_results.items():
         draw.rectangle(((coords["x"], coords["y"]), (coords["x"] + coords["w"], coords["y"] + coords["h"])), outline="red")
-        draw.text((coords["x"], coords["y"] + coords["h"]), text, fill="black", font=font)
+        draw.text((coords["x"], coords["y"] + coords["h"]), text, fill="green", font=font)
 
     # Saving the final image with highlighted text
     image_after_red.save(os.path.join(tmp_directory, f'{image_name}-7-highlighted_image.png'))
@@ -281,31 +330,29 @@ def calculate_arrow_path(center_x, center_y, box_x, box_y, box_w, box_h):
     :param box_x, box_y, box_w, box_h: Coordinates and size of the box.
     :return: A list of points representing the path of the arrow.
     """
-    path = [(center_x, center_y)]  # 시작점
+    path = [(center_x, center_y)] # arrow start
 
     box_center_x = box_x + box_w / 2
     box_center_y = box_y + box_h / 2
 
-    # 화살표가 먼저 수평 방향으로 이동해야 하는지 결정
-    if box_x <= center_x <= box_x + box_w:  # 수평 방향으로 먼저 이동
+    # logic to set path of the arrow
+    if box_x <= center_x <= box_x + box_w: 
         horizontal_target_x = box_center_x
         path.append((horizontal_target_x, center_y))
 
-        # 수직 방향으로 이동하여 엣지 결정
-        if center_y > box_center_y:  # 박스가 위에 있음
-            vertical_target_y = box_y + box_h  # 아래쪽 엣지 중앙
-        else:  # 박스가 아래에 있음
-            vertical_target_y = box_y  # 윗쪽 엣지 중앙
+        if center_y > box_center_y:  
+            vertical_target_y = box_y + box_h  
+        else:  
+            vertical_target_y = box_y 
         path.append((horizontal_target_x, vertical_target_y))
-    else:  # 수직 방향으로 먼저 이동
+    else:  
         vertical_target_y = box_center_y
         path.append((center_x, vertical_target_y))
 
-        # 수평 방향으로 이동하여 엣지 결정
-        if box_center_x > center_x:  # 사각형이 오른쪽에 있음
-            horizontal_target_x = box_x  # 왼쪽 엣지 중앙
-        else:  # 사각형이 왼쪽에 있음
-            horizontal_target_x = box_x + box_w  # 오른쪽 엣지 중앙
+        if box_center_x > center_x:
+            horizontal_target_x = box_x  
+        else: 
+            horizontal_target_x = box_x + box_w  
 
         path.append((horizontal_target_x, vertical_target_y))
 
@@ -330,17 +377,13 @@ def calculate_room_similarity(requested_room, available_rooms):
     :return: The most similar room number.
     """
     def similarity_score(room1, room2):
-        # 공통 접두사 길이 계산
         common_prefix_len = len(os.path.commonprefix([room1, room2]))
 
-        # 숫자 부분만 추출
         num_part1 = re.sub("[^0-9]", "", room1)
         num_part2 = re.sub("[^0-9]", "", room2)
 
-        # 숫자 차이 계산
         num_difference = abs(int(num_part1) - int(num_part2)) if num_part1.isdigit() and num_part2.isdigit() else float('inf')
 
-        # 유사도 점수 계산: 숫자 차이가 클수록 유사도 점수 감소
         return common_prefix_len * 10000 - num_difference
 
     similarities = [(room, similarity_score(requested_room, room)) for room in available_rooms]
@@ -454,29 +497,55 @@ def is_number_in_range(num_str, range_str):
     return num_str in expanded_range
 
 @app.route('/view/<room_number>', methods=['GET'])
+@app.route('/v/<room_number>', methods=['GET'])
+@app.route('/r/<room_number>', methods=['GET'])
 def view_room_highlighted(room_number):
     """
     Flask route to view an image with a specific room number highlighted.
-    This endpoint is used to send an image with the specified room number highlighted, indicating its location.
+    This endpoint sends an image with the specified room number highlighted, indicating its location.
     :param room_number: The room number to be highlighted in the image.
     :return: Image response with the specified room number highlighted, or an error message if not found.
     """
-    analyzed_results = load_results_from_json()
+    force = request.args.get('force', '').lower() == 'true'
+    highlighted_image_path = view_room_highlighted_logic(room_number, force)
 
-    # Find the exact match or the closest similar room
+    if os.path.exists(highlighted_image_path):
+        return send_file(highlighted_image_path, mimetype='image/png')
+    else:
+        return jsonify({"error": "Room number not found or image could not be created"}), 404
+
+def view_room_highlighted_logic(room_number, force=False):
+    """
+    Logic to generate an image with a specific room number highlighted.
+    :param room_number: The room number to be highlighted in the image.
+    :param force: Boolean flag to force regeneration of the image.
+    :return: Path to the generated image, or None if not found.
+    """
+    analyzed_results = load_results_from_json()
+    highlighted_image_path = os.path.join(tmp_directory, f"{room_number}-highlighted.png")
+
+    # Check if the image already exists and if force regeneration is not required
+    if not force and os.path.exists(highlighted_image_path):
+        return highlighted_image_path
+
+    # Logic to generate a new highlighted image
     if room_number in analyzed_results:
         room_info = analyzed_results[room_number]
         similar_room = None  # Exact match found
     else:
         similar_room = calculate_room_similarity(room_number, analyzed_results.keys())
         if not similar_room or similar_room == room_number:  # Low similarity or no match found
-            return jsonify({"error": "Room number not found or invalid format"}), 404
+            return None
         room_info = analyzed_results[similar_room]
 
     # Load the floor image and prepare for drawing
     floor_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-map.png")
     if os.path.exists(floor_image_path):
         image = Image.open(floor_image_path)
+
+        # Increasing image sharpness
+        enhancer = ImageEnhance.Sharpness(image)
+        image = enhancer.enhance(5.0)  # Increasing sharpness, value greater than 1.0 makes the image sharper
         draw = ImageDraw.Draw(image)
 
         # Calculate the center coordinates of the image
@@ -492,7 +561,7 @@ def view_room_highlighted(room_number):
         x, y, w, h = room_info['x'] - x_expand, room_info['y'] - y_expand, room_info['w'] + 2 * x_expand, room_info['h'] + 2 * y_expand
         draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=4)
 
-        # Draw arrow
+        # Draw arrow and text
         path = calculate_arrow_path(image_center_x, image_center_y, x, y, w, h)
         for i in range(len(path) - 1):
             draw_dashed_line(draw, path[i], path[i + 1], fill="blue")
@@ -503,19 +572,112 @@ def view_room_highlighted(room_number):
             draw_question_mark(draw, question_mark_pos)
             font_size = 30 
             font = ImageFont.truetype("arial.ttf", font_size)
-            message1 = f"Not found requested room [{room_number}]"
-            draw.text((image_center_x + 50, image_center_y), message1, fill="green", font=font)
-            message2 = f"Showing similar room [{similar_room}]"
-            draw.text((image_center_x + 50, image_center_y + 35), message2, fill="green", font=font)
+            message1 = f"No exact match: [{room_number}]"
+            draw.text((image_center_x + 160, image_center_y - 30), message1, fill="green", font=font)
+            message2 = f"Approximately similar: [{similar_room}]"
+            draw.text((image_center_x + 160, image_center_y - 30 + 35), message2, fill="green", font=font)
 
-        highlighted_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-highlighted.png")
         image.save(highlighted_image_path)
-        return send_file(highlighted_image_path, mimetype='image/png')
+        return highlighted_image_path
     else:
-        return jsonify({"error": "Floor image not found"}), 404
+        return None
+
+def combine_images(tmp_directory, image_pattern):
+    """
+    Combines multiple images matching the given pattern into a single image.
+    :param tmp_directory: The directory where the images are stored.
+    :param image_pattern: The pattern to match for image filenames.
+    :return: Combined image object.
+    """
+    image_files = [f for f in os.listdir(tmp_directory) if image_pattern in f]
+    images = [Image.open(os.path.join(tmp_directory, img_file)) for img_file in image_files]
+
+    # Assuming all images are of the same size for simplicity
+    widths, heights = zip(*(i.size for i in images))
+    total_width = sum(widths)
+    max_height = max(heights)
+
+    # Create a new image to combine all images
+    combined_image = Image.new('RGB', (total_width, max_height))
+
+    # Paste each image next to each other
+    x_offset = 0
+    for im in images:
+        combined_image.paste(im, (x_offset, 0))
+        x_offset += im.size[0]
+
+    return combined_image
+
+@app.route('/validate', methods=['GET'])
+def validate_images():
+    """
+    Flask route to combine multiple images into one and return the combined image.
+    If a 'testset' query parameter is provided, it reads room numbers from 'testset.txt',
+    generates images for each room number using view_room_highlighted, and combines these images.
+    The 'force' query parameter can be used to force the regeneration of the combined image.
+
+    - 'testset=true': Generates and combines images for room numbers read from 'testset.txt'.
+    - 'force=true': Ignores any cached combined image and forces the creation and combination of new images.
+    -  Without 'force' parameter or with 'force=false': If a previously generated combined image exists, it's returned.   
+
+    :return: Response with the combined image file or an error message.
+    """
+    testset = request.args.get('testset')
+    force = request.args.get('force')
 
 
+    # If the testset parameter is provided, perform validation on the testset
+    if testset:
+        combined_image_path = os.path.join(tmp_directory, 'combined_testset_image.png')
 
+        if not force:
+            if os.path.exists(combined_image_path):
+                return send_file(combined_image_path, mimetype='image/png')
+
+        combined_images = []
+        with open('testset.txt', 'r') as file:
+            room_numbers = file.read().splitlines()
+
+        for room_number in room_numbers:
+            # Call the view_room_highlighted function and get the image path
+            # We're calling the function directly, but it's better to refactor this logic into a common function
+            # that both view_room_highlighted and this route can use.
+            image_path = view_room_highlighted_logic(room_number)
+            if os.path.exists(image_path):
+                combined_images.append(Image.open(image_path))
+
+        # Combine all images into one
+        if combined_images:
+            # Assuming all images are the same size
+            widths, heights = zip(*(i.size for i in combined_images))
+            total_width = sum(widths)
+            max_height = max(heights)
+            combined_image = Image.new('RGB', (total_width, max_height))
+
+            x_offset = 0
+            for im in combined_images:
+                combined_image.paste(im, (x_offset, 0))
+                x_offset += im.size[0]
+
+            
+            combined_image.save(combined_image_path)
+            return send_file(combined_image_path, mimetype='image/png')
+        else:
+            return jsonify({"error": "No images were generated from the testset"}), 404
+    else:
+        combined_image_path = os.path.join(tmp_directory, 'combined_image.png')
+
+        if not force:
+            if os.path.exists(combined_image_path):
+                return send_file(combined_image_path, mimetype='image/png')
+
+        # Original behavior for combining highlighted images
+        combined_image = combine_images(tmp_directory, '-7-highlighted_image.png')
+        combined_image.save(combined_image_path)
+
+        return send_file(combined_image_path, mimetype='image/png')
+
+# main
 if __name__ == '__main__':
     json_file = 'map.json'
 
