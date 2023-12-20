@@ -1,0 +1,114 @@
+@startuml
+Title: MeetMap API Interaction Diagram
+
+actor "Administrator" as admin
+actor "Client User" as user
+participant "Image Processing Script" as script
+participant "Image Analysis Service" as img_analysis
+participant "OCR Engine (Tesseract)" as ocr
+participant "Data Storage Service" as data_store
+participant "Flask Web Server" as flask
+participant "Room Number Similarity Service" as similarity
+participant "Client Web Interface" as web
+database "Room Data JSON File" as json_db
+
+autonumber 1
+#linear
+
+admin -> script: Execute image processing script
+script -> img_analysis: Analyze images in directory
+loop For Each Image
+    img_analysis -> img_analysis: Apply image filters and enhancements
+    img_analysis -> ocr: Perform OCR to extract text
+    ocr -> img_analysis: Return extracted text
+    img_analysis -> data_store: Store extracted room data
+    data_store -> json_db: Update room data in JSON file
+end
+img_analysis -> script: Complete image analysis
+script -> flask: Start Flask web server
+
+group API Interaction Sequences
+    user -> web: Access MeetMap web interface
+    web -> flask: Make API requests (GET, POST, etc.)
+    flask -> json_db: Query or update room data
+    json_db -> flask: Return requested data
+    flask -> web: Respond with data to client
+    web -> user: Display information or images
+end
+
+group Detailed API Request Handling
+    group Room Data Retrieval API (/room/<room_number>)
+        user -> flask: GET /room/<room_number>
+        flask -> json_db: Lookup specific room number
+        alt Room Number Not Found
+            flask -> similarity: Analyze for similar room number
+            similarity -> json_db: Fetch similar room data
+        end
+        json_db -> flask: Provide room data
+        flask -> user: Respond with room information
+    end
+
+    group List All Rooms API (/room)
+        user -> flask: GET /room
+        flask -> json_db: Retrieve list of all room numbers
+        json_db -> flask: Return list of room numbers
+        flask -> user: Display list of rooms
+    end
+
+    group Add New Room API (/room)
+        user -> flask: POST /room
+        flask -> json_db: Add new room information
+        json_db -> flask: Confirm addition
+        flask -> user: Acknowledge successful addition
+    end
+
+    group Update Room Information API (/room/<room_number>)
+        user -> flask: PUT /room/<room_number>
+        flask -> json_db: Update specific room information
+        json_db -> flask: Confirm update
+        flask -> user: Acknowledge successful update
+    end
+
+    group Room Visualization API (/view/<room_number>)
+        user -> flask: GET /view/<room_number>
+        flask -> json_db: Retrieve data for room visualization
+        alt Room Number Not Found
+            flask -> similarity: Analyze for similar room number
+            similarity -> json_db: Fetch similar room data
+            flask -> img_analysis: Highlight similar room in image
+        else Room Number Found
+            json_db -> flask: Provide room data
+            flask -> img_analysis: Highlight requested room in image
+        end
+        img_analysis -> flask: Return image with highlighted room
+        flask -> user: Display highlighted room image
+    end
+
+    group API Listing API (/api)
+        user -> flask: GET /api
+        flask -> flask: List all available APIs
+        flask -> user: Provide list of APIs
+    end
+
+    group Retrieve Specific Image API (/image)
+        user -> flask: GET /image
+        flask -> img_analysis: Fetch a specific image
+        img_analysis -> flask: Return the requested image
+        flask -> user: Display the image
+    end
+
+    group Validate Room Number API (/validate)
+        user -> flask: GET /validate/<room_number>
+        flask -> json_db: Check if room number exists
+        json_db -> flask: Return validation result
+        flask -> user: Provide validation status
+    end
+
+    group Room Number Similarity API (/similar/<room_number>)
+        user -> flask: GET /similar/<room_number>
+        flask -> similarity: Analyze for similar room number
+        similarity -> json_db: Fetch similar room data
+        flask -> user: Provide similar room information
+    end
+end
+@enduml
