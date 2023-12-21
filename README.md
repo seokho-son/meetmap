@@ -4,11 +4,15 @@
 MeetMap is a Python-based Flask web application that extracts room numbers and their coordinates from images. It utilizes image processing and Optical Character Recognition (OCR) to identify text within images and store the location information of the detected text. This application is particularly useful for mapping room numbers in building layouts or similar scenarios.
 
 ## Features
-- Extracts room numbers and their coordinates from images in a specified directory.
-- Manages the extracted room number data through REST API endpoints.
-- Adjusts the image's height to a consistent resolution for processing.
-- Highlights extracted room numbers on the image.
-- Allows the user to decide whether to perform a new analysis or use existing data.
+- Automated extraction of room numbers using OCR.
+- Image processing for enhanced text detection.
+- Flask web server with RESTful API for data management.
+- Room number similarity analysis for approximate matches.
+- Interactive image visualization with highlighted room numbers.
+- Support for handling multiple floor images and complex room number formats.
+
+# Architecture
+- UML sequence diagram: https://github.com/seokho-son/meetmap/blob/main/sequence.uml
 
 ## Installation
 
@@ -52,24 +56,30 @@ If a map.json file already exists, the program will ask whether to perform a new
 1. GET /api: Lists all available API endpoints.
 1. GET /room: Retrieves a list of all extracted room numbers.
 1. GET /view/<room_number>: Highlights and returns an image with the specified room number.
+   - force=true: Forces the creation and combination of new images, ignoring any cached combined image.
+   - Without force parameter or with force=false: Returns a previously generated combined image if it exists.
 1. GET /room/<room_number>: Retrieves coordinate information for a specific room number.
 1. POST /room: Adds new room number and coordinate information.
 1. PUT /room/<room_number>: Updates coordinate information for an existing room number.
+1. GET /validate: Combines multiple images into one and returns the combined image. 
+   - testset=true: Generates and combines images for room numbers read from testset.txt.
+   - force=true: Forces the creation and combination of new images, ignoring any cached combined image.
+   - Without force parameter or with force=false: Returns a previously generated combined image if it exists.
 
 ### Example API Calls
 To retrieve a list of room numbers:
 ```bash
-curl http://localhost:5000/room
+curl http://localhost:1111/room
 ```
 
 To retrieve coordinate information for a specific room number:
 ```bash
-curl http://localhost:5000/room/551
+curl http://localhost:1111/room/551
 ```
 
 To view an image with a specific room number highlighted:
 ```bash
-curl http://localhost:5000/view/551
+curl http://localhost:1111/view/551
 ```
 
 ## License
