@@ -1,4 +1,4 @@
-# MeetMap Project
+# MeetMap Project (DIR service)
 
 ## Overview
 MeetMap is a Python-based Flask web application that extracts room numbers and their coordinates from images. It utilizes image processing and Optical Character Recognition (OCR) to identify text within images and store the location information of the detected text. This application is particularly useful for mapping room numbers in building layouts or similar scenarios.
