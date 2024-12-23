@@ -8,9 +8,15 @@ import pytesseract  # Tesseract OCR library for text recognition
 import cv2  # OpenCV library for computer vision tasks
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
 from flask import Flask, jsonify, request, send_file
+import easyocr  # EasyOCR library for text recognition
 
 # Initializing Flask application
 app = Flask(__name__)
+
+# Initialize EasyOCR Reader (supports multiple languages, e.g., ['en', 'ko'])
+reader = easyocr.Reader(['en', 'ko'], gpu=True)  # Use GPU if available
+# DejaVuSans.ttf Font License - https://dejavu-fonts.github.io/License.html
+font_path = "assets/DejaVuSans.ttf"
 
 # Function to analyze an image and extract room number information
 def analyze_image(image_path, image_name):
@@ -20,16 +26,13 @@ def analyze_image(image_path, image_name):
     :param image_name: Name of the image file.
     :return: A dictionary with room numbers and their coordinates.
     """
+
     analyzed_results = {}
     image = Image.open(image_path).convert("RGB")
-
+    
     # Enhancing image quality (increasing contrast)
     enhancer = ImageEnhance.Contrast(image)
-    enhanced_image = enhancer.enhance(1.01)  # Increasing contrast by 1.01 times
-
-    # Increasing image sharpness
-    enhancer = ImageEnhance.Sharpness(enhanced_image)
-    enhanced_image = enhancer.enhance(1.0)  # Increasing sharpness, value greater than 1.0 makes the image sharper
+    enhanced_image = enhancer.enhance(1.3)  # Increasing contrast
     enhanced_image.save(os.path.join(tmp_directory, f'{image_name}-0-image_after_enhance.png'))
 
     # Resizing the image
@@ -38,126 +41,51 @@ def analyze_image(image_path, image_name):
     new_height = 1000
     new_width = int(aspect_ratio * new_height)
     resized_image = enhanced_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    resized_image.save(os.path.join(tmp_directory, f'{image_name}-map.png'))
     print("Image Information:")
     print(f"Original Size: {original_width}x{original_height}")
     print(f"Resized Size: {new_width}x{new_height}")
 
-    # Converting the image to a numpy array for processing
-    image_data = np.array(resized_image)
-
-    # Creating masks for red and blue channel adjustments
-    red_mask = image_data[:, :, 0] > 90
-    blue_mask = image_data[:, :, 2] > 90
-
-    # Applying white color to specified pixels
-    image_data[red_mask | blue_mask] = [255, 255, 255]
-
-    # Saving the modified image
-    image_after_red = Image.fromarray(image_data)
-    image_after_red.save(os.path.join(tmp_directory, f'{image_name}-1-image_after_red.png'))
-
-    # Image for map with enhanced contrast
-    enhancer = ImageEnhance.Contrast(image_after_red)
-    enhanced_image = enhancer.enhance(1.5) 
-    enhanced_image.save(os.path.join(tmp_directory, f'{image_name}-map.png'))
-
-    # Changing all pixels with a green channel below 20 to white
-    green_threshold = 20
-    green_mask = image_data[:, :, 1] < green_threshold
-    image_data[green_mask] = [255, 255, 255]
-
-    # Saving the modified image
-    image_after_green = Image.fromarray(image_data)
-    image_after_green.save(os.path.join(tmp_directory, f'{image_name}-2-image_after_green.png'))
-
-    # Changing pixels to white if the deviation among RGB channels is less than 14
-    max_deviation = np.max(image_data, axis=-1) - np.min(image_data, axis=-1)
-    uniform_color_mask = max_deviation < 14
-    image_data[uniform_color_mask] = [255, 255, 255]
-
-    # Saving the modified image
-    image_rgb_threshold = Image.fromarray(image_data)
-    image_rgb_threshold.save(os.path.join(tmp_directory, f'{image_name}-3-image_after_rgb_threshold.png'))
-
-    # Enhancing contrast for better text recognition
-    enhancer = ImageEnhance.Contrast(image_rgb_threshold)
-    image_rgb_threshold = enhancer.enhance(1.5)
-
-    # Preprocessing the image for OCR
-    # Setting a threshold value for binarization
-    threshold_value = 100
-
-    # Converting the image to grayscale
-    gray_image = image_rgb_threshold.convert('L')
-    gray_image.save(os.path.join(tmp_directory, f'{image_name}-4-gray_image.png'))
-
-    # Binarizing the image
-    _, binary_image = cv2.threshold(np.array(gray_image), threshold_value, 255, cv2.THRESH_BINARY)
-    binary_image_save = Image.fromarray(binary_image)
-    binary_image_save.save(os.path.join(tmp_directory, f'{image_name}-5-binary_image.png'))
-
-    # Defining a sharpening kernel
-    sharpening_kernel = np.array([[-1, -1, -1],
-                                  [-1,  30, -1],
-                                  [-1, -1, -1]])
-    edges = cv2.Canny(binary_image, 100, 200)
-    mask = edges != 0
-    mask = mask.astype(np.uint8)
-
-    # Applying sharpening to the image
-    sharpened_image = cv2.filter2D(binary_image, -1, sharpening_kernel)
-    binary_image[mask == 1] = sharpened_image[mask == 1]
-
-    # Creating erosion and dilation to clean up the image
-    kernel = np.ones((2, 2), np.uint8)
-    eroded_image = cv2.erode(binary_image, kernel, iterations=1)
-    dilated_image = cv2.dilate(eroded_image, kernel, iterations=1)
-
-    # Convert back to PIL Image for OCR
-    image_for_ocr = Image.fromarray(dilated_image)
-    image_for_ocr.save(os.path.join(tmp_directory, f'{image_name}-6-dilated_eroded_image.png'))
-
-    # Using Tesseract OCR to extract text and their coordinates from the image
     # Function to run OCR on multiple page segmentation modes and combine results
-    def run_ocr_on_all_modes(image, modes):
+    def run_ocr_on_all_modes(image):
+        """
+        Runs OCR on the image using EasyOCR and combines results to match the structure of combined_data.
+        :param image: PIL Image object.
+        :return: A dictionary with keys 'text', 'conf', 'left', 'top', 'width', 'height'.
+        """
+        # Initialize the combined_data dictionary
         combined_data = {'text': [], 'conf': [], 'left': [], 'top': [], 'width': [], 'height': []}
-        seen = set()  # Set to track seen text and their coordinates
+        seen = set()  # Track unique text elements to avoid duplicates
 
-        for mode in modes:
-            try:
-                config = f'--psm {mode}'
-                data = pytesseract.image_to_data(image, config=config, output_type=pytesseract.Output.DICT)
+        # Convert the PIL image to a format compatible with EasyOCR
+        image_np = np.array(image)  # Convert to numpy array (EasyOCR can use this directly)
+        
+        # Run EasyOCR
+        results = reader.readtext(image_np, detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
 
-                for i in range(len(data['text'])):
-                    # Create a unique identifier for each text based on its content and position
-                    identifier = (data['text'][i], data['left'][i], data['top'][i], data['width'][i], data['height'][i])
-
-                    if identifier not in seen:
-                        seen.add(identifier)
-                        for key in combined_data.keys():
-                            combined_data[key].append(data[key][i])
-
-            except pytesseract.TesseractError as e:
-                print(f"Error in PSM mode {mode}: {e}")
-            except FileNotFoundError as e:
-                print(f"FileNotFoundError in PSM mode {mode}: {e}")
-                break     
-
+        for (bbox, text, confidence) in results:
+            if confidence > 0.3:  # Only consider results with the confidence
+                # Extract bounding box coordinates
+                (x_min, y_min), (x_max, y_max) = bbox[0], bbox[2]
+                identifier = (text.strip(), int(x_min), int(y_min), int(x_max - x_min), int(y_max - y_min))
+                if identifier not in seen:
+                    seen.add(identifier)
+                    combined_data['text'].append(text.strip())
+                    combined_data['conf'].append(int(confidence * 100))  # Convert to percentage
+                    combined_data['left'].append(int(x_min))
+                    combined_data['top'].append(int(y_min))
+                    combined_data['width'].append(int(x_max - x_min))
+                    combined_data['height'].append(int(y_max - y_min))
         return combined_data
-
-
-    # Define the list of PSM modes to use
-    psm_modes = [3, 4, 6, 11]
-    # psm_modes = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     
-    # Run OCR using multiple PSM modes and combine the results
-    data = run_ocr_on_all_modes(image_for_ocr, psm_modes)
+    # Run OCR using EasyOCR
+    data = run_ocr_on_all_modes(resized_image)
 
-    draw = ImageDraw.Draw(image_after_red)
+    draw = ImageDraw.Draw(resized_image)
     font_size = 30 
-    font = ImageFont.truetype("arial.ttf", font_size)
+    font = ImageFont.truetype(font_path, font_size)
     font_size = 15 
-    fontSmall = ImageFont.truetype("arial.ttf", font_size)
+    fontSmall = ImageFont.truetype(font_path, font_size)
 
     # Parsing the extracted text and coordinates
     # Drawing rectangles around detected text on the image
@@ -203,8 +131,9 @@ def analyze_image(image_path, image_name):
         draw.text((coords["x"], coords["y"] + coords["h"]), text, fill="green", font=font)
 
     # Saving the final image with highlighted text
-    image_after_red.save(os.path.join(tmp_directory, f'{image_name}-7-highlighted_image.png'))
+    resized_image.save(os.path.join(tmp_directory, f'{image_name}-7-highlighted_image.png'))
     return analyzed_results
+
 
 # Function to store data about a room
 def store_room_data(room_number, data, index, analyzed_results, image_name):
@@ -262,6 +191,11 @@ if not os.path.exists(tmp_directory):
 analyzed_results = {}
 
 def perform_image_analysis():
+    # Handle tmp directory
+    if os.path.exists(tmp_directory):
+        for file in os.listdir(tmp_directory):
+            os.remove(os.path.join(tmp_directory, file))
+
     directory_path = sys.argv[1]
     results = {}
     for filename in os.listdir(directory_path):
@@ -358,7 +292,7 @@ def calculate_arrow_path(center_x, center_y, box_x, box_y, box_w, box_h):
 
     return path
 
-def draw_question_mark(draw, position, size=50, fill="green"):
+def draw_question_mark(draw, message, position, size=130, fill="yellow"):
     """
     Draws a question mark at the given position.
     :param draw: ImageDraw object.
@@ -366,8 +300,20 @@ def draw_question_mark(draw, position, size=50, fill="green"):
     :param size: Size of the question mark.
     :param fill: Color of the question mark.
     """
-    font = ImageFont.truetype("arial.ttf", size)
-    draw.text(position, "?", fill=fill, font=font)
+
+    font_size = 30
+    font = ImageFont.truetype(font_path, font_size)
+
+    # Calculate the rectangle coordinates based on the position and size
+    x, y = position
+    y = y + 30
+    rectangle_position = (x, y, x + size, y + font_size)
+
+    # Draw the rectangle
+    draw.rectangle(rectangle_position, fill="black")
+
+    # Draw the question mark and message
+    draw.text((x, y), " ? " + message, fill=fill, font=font)
 
 def calculate_room_similarity(requested_room, available_rooms):
     """
@@ -506,6 +452,18 @@ def view_room_highlighted(room_number):
     :param room_number: The room number to be highlighted in the image.
     :return: Image response with the specified room number highlighted, or an error message if not found.
     """
+    
+    # Define the patterns to be replaced
+    patterns_to_replace = [" 동 ", "동-", "동 ", " 동", "동", " - ", "- ", " -", " "]
+    
+    # Replace the patterns with "-"
+    for pattern in patterns_to_replace:
+        room_number = room_number.replace(pattern, "-")
+    
+    # Remove "호" from the room number
+    room_number = room_number.replace("호", "")
+
+    
     force = request.args.get('force', '').lower() == 'true'
     highlighted_image_path = view_room_highlighted_logic(room_number, force)
 
@@ -559,7 +517,7 @@ def view_room_highlighted_logic(room_number, force=False):
         x_expand = room_info['w'] * 0.1
         y_expand = room_info['h'] * 0.1
         x, y, w, h = room_info['x'] - x_expand, room_info['y'] - y_expand, room_info['w'] + 2 * x_expand, room_info['h'] + 2 * y_expand
-        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=4)
+        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=5)
 
         # Draw arrow and text
         path = calculate_arrow_path(image_center_x, image_center_y, x, y, w, h)
@@ -568,14 +526,15 @@ def view_room_highlighted_logic(room_number, force=False):
 
         draw_arrow_head(draw, path[-2], path[-1], fill="blue")
         if similar_room:
-            question_mark_pos = (path[-1][0] + 20, path[-1][1])
-            draw_question_mark(draw, question_mark_pos)
-            font_size = 30 
-            font = ImageFont.truetype("arial.ttf", font_size)
-            message1 = f"No exact match: [{room_number}]"
-            draw.text((image_center_x + 160, image_center_y - 30), message1, fill="green", font=font)
-            message2 = f"Approximately similar: [{similar_room}]"
-            draw.text((image_center_x + 160, image_center_y - 30 + 35), message2, fill="green", font=font)
+            message1 = f"{room_number}"
+            question_mark_pos = (path[-1][0], path[-1][1])
+            draw_question_mark(draw, message1 , question_mark_pos)
+            # font_size = 30 
+            # font = ImageFont.truetype(font_path, font_size)
+            # message1 = f"No exact match: [{room_number}]"
+            # draw.text((image_center_x + 10, image_center_y + 130), message1, fill="green", font=font)
+            # message2 = f"Approximately similar: [{similar_room}]"
+            # draw.text((image_center_x + 10, image_center_y + 130 + 35), message2, fill="green", font=font)
 
         image.save(highlighted_image_path)
         return highlighted_image_path
