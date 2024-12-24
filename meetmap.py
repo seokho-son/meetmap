@@ -4,7 +4,6 @@ import numpy as np
 import re
 import os
 import json
-import pytesseract  # Tesseract OCR library for text recognition
 import cv2  # OpenCV library for computer vision tasks
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
 from flask import Flask, jsonify, request, send_file
@@ -14,9 +13,19 @@ import easyocr  # EasyOCR library for text recognition
 app = Flask(__name__)
 
 # Initialize EasyOCR Reader (supports multiple languages, e.g., ['en', 'ko'])
-reader = easyocr.Reader(['en', 'ko'], gpu=True)  # Use GPU if available
+reader = easyocr.Reader(['en'], gpu=True)  # Use GPU if available
 # DejaVuSans.ttf Font License - https://dejavu-fonts.github.io/License.html
 font_path = "assets/DejaVuSans.ttf"
+
+# Handle directory
+tmp_directory = "tmp"
+if not os.path.exists(tmp_directory):
+    os.makedirs(tmp_directory)
+
+directory_path = "image"
+if not os.path.exists(directory_path):
+    print("image directory does not exist.")
+    sys.exit(1)    
 
 # Function to analyze an image and extract room number information
 def analyze_image(image_path, image_name):
@@ -32,19 +41,33 @@ def analyze_image(image_path, image_name):
     
     # Enhancing image quality (increasing contrast)
     enhancer = ImageEnhance.Contrast(image)
-    enhanced_image = enhancer.enhance(1.3)  # Increasing contrast
-    enhanced_image.save(os.path.join(tmp_directory, f'{image_name}-0-image_after_enhance.png'))
+    image = enhancer.enhance(1.3)  # Increasing contrast
+    image.save(os.path.join(tmp_directory, f'{image_name}-0-image_after_enhance.png'))
 
     # Resizing the image
-    original_width, original_height = enhanced_image.size
+    original_width, original_height = image.size
     aspect_ratio = original_width / original_height
     new_height = 1000
     new_width = int(aspect_ratio * new_height)
-    resized_image = enhanced_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
     resized_image.save(os.path.join(tmp_directory, f'{image_name}-map.png'))
     print("Image Information:")
     print(f"Original Size: {original_width}x{original_height}")
     print(f"Resized Size: {new_width}x{new_height}")
+
+    ocr_image = cv2.imread(os.path.join(tmp_directory, f'{image_name}-map.png'), cv2.IMREAD_GRAYSCALE)
+
+    # Step 1: Enhance contrast using CLAHE
+    clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(4, 4))
+    ocr_image = clahe.apply(ocr_image)
+    ocr_image = cv2.medianBlur(ocr_image, 1)
+
+    # # Step 2: Apply bilateral filter for noise reduction while preserving edges
+    # ocr_image = cv2.bilateralFilter(ocr_image, d=9, sigmaColor=75, sigmaSpace=75)
+
+    # Save or return preprocessed image
+    preprocessed_path = os.path.join(tmp_directory, f'{image_name}-0-image_after_enhance.png')
+    cv2.imwrite(preprocessed_path, ocr_image)
 
     # Function to run OCR on multiple page segmentation modes and combine results
     def run_ocr_on_all_modes(image):
@@ -61,10 +84,10 @@ def analyze_image(image_path, image_name):
         image_np = np.array(image)  # Convert to numpy array (EasyOCR can use this directly)
         
         # Run EasyOCR
-        results = reader.readtext(image_np, detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
+        results = reader.readtext(image_np, allowlist ='0123456789L-', detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
 
         for (bbox, text, confidence) in results:
-            if confidence > 0.3:  # Only consider results with the confidence
+            if confidence > 0.5:  # Only consider results with the confidence
                 # Extract bounding box coordinates
                 (x_min, y_min), (x_max, y_max) = bbox[0], bbox[2]
                 identifier = (text.strip(), int(x_min), int(y_min), int(x_max - x_min), int(y_max - y_min))
@@ -79,12 +102,12 @@ def analyze_image(image_path, image_name):
         return combined_data
     
     # Run OCR using EasyOCR
-    data = run_ocr_on_all_modes(resized_image)
+    data = run_ocr_on_all_modes(ocr_image)
 
     draw = ImageDraw.Draw(resized_image)
-    font_size = 30 
+    font_size = 15
     font = ImageFont.truetype(font_path, font_size)
-    font_size = 15 
+    font_size = 10
     fontSmall = ImageFont.truetype(font_path, font_size)
 
     # Parsing the extracted text and coordinates
@@ -92,7 +115,7 @@ def analyze_image(image_path, image_name):
     for i in range(len(data['text'])):
         if int(data['conf'][i]) > 1:  # Using low confidence texts as well
             text = data['text'][i].strip()
-            draw.text((data['left'][i], data['top'][i] + data['height'][i]*2), f"{text}({data['conf'][i]}%)", fill="red", font=fontSmall)
+            draw.text((data['left'][i], data['top'][i] + data['height'][i]), f"{text}({data['conf'][i]}%)", fill="green", font=font)
             if text:
                 print(f"{text} (Confidence: {data['conf'][i]}%)")
                 # Extract room number patterns
@@ -128,7 +151,7 @@ def analyze_image(image_path, image_name):
 
     for text, coords in analyzed_results.items():
         draw.rectangle(((coords["x"], coords["y"]), (coords["x"] + coords["w"], coords["y"] + coords["h"])), outline="red")
-        draw.text((coords["x"], coords["y"] + coords["h"]), text, fill="green", font=font)
+        # draw.text((coords["x"], coords["y"] + coords["h"]), text, fill="green", font=font)
 
     # Saving the final image with highlighted text
     resized_image.save(os.path.join(tmp_directory, f'{image_name}-7-highlighted_image.png'))
@@ -178,33 +201,6 @@ def load_results_from_json(json_file='map.json'):
     else:
         return {}
     
-# Processing the image based on the user input path
-if len(sys.argv) != 2:
-    print("Usage: python script.py path_to_image")
-    sys.exit(1)    
-
-# Handle tmp directory
-tmp_directory = "tmp"
-if not os.path.exists(tmp_directory):
-    os.makedirs(tmp_directory)
-
-analyzed_results = {}
-
-def perform_image_analysis():
-    # Handle tmp directory
-    if os.path.exists(tmp_directory):
-        for file in os.listdir(tmp_directory):
-            os.remove(os.path.join(tmp_directory, file))
-
-    directory_path = sys.argv[1]
-    results = {}
-    for filename in os.listdir(directory_path):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-            image_path = os.path.join(directory_path, filename)
-            image_name = os.path.splitext(filename)[0]
-            image_results = analyze_image(image_path, image_name)
-            results.update(image_results)
-    return results
 
 
 # Drawing assets...
@@ -463,6 +459,10 @@ def view_room_highlighted(room_number):
     # Remove "호" from the room number
     room_number = room_number.replace("호", "")
 
+    # Check if room_number starts with any of the image names
+    print("Image Names: ", image_names)
+    if not any(room_number.startswith(name) for name in image_names):
+        return jsonify({"Sorry": "Map for "  + room_number + " is not supported yet"}), 404
     
     force = request.args.get('force', '').lower() == 'true'
     highlighted_image_path = view_room_highlighted_logic(room_number, force)
@@ -500,10 +500,6 @@ def view_room_highlighted_logic(room_number, force=False):
     floor_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-map.png")
     if os.path.exists(floor_image_path):
         image = Image.open(floor_image_path)
-
-        # Increasing image sharpness
-        enhancer = ImageEnhance.Sharpness(image)
-        image = enhancer.enhance(5.0)  # Increasing sharpness, value greater than 1.0 makes the image sharper
         draw = ImageDraw.Draw(image)
 
         # Calculate the center coordinates of the image
@@ -517,12 +513,12 @@ def view_room_highlighted_logic(room_number, force=False):
         x_expand = room_info['w'] * 0.1
         y_expand = room_info['h'] * 0.1
         x, y, w, h = room_info['x'] - x_expand, room_info['y'] - y_expand, room_info['w'] + 2 * x_expand, room_info['h'] + 2 * y_expand
-        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=5)
+        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=7)
 
         # Draw arrow and text
         path = calculate_arrow_path(image_center_x, image_center_y, x, y, w, h)
         for i in range(len(path) - 1):
-            draw_dashed_line(draw, path[i], path[i + 1], fill="blue")
+            draw_dashed_line(draw, path[i], path[i + 1], width=5, fill="blue")
 
         draw_arrow_head(draw, path[-2], path[-1], fill="blue")
         if similar_room:
@@ -636,6 +632,25 @@ def validate_images():
 
         return send_file(combined_image_path, mimetype='image/png')
 
+
+analyzed_results = {}
+image_names = []
+
+def perform_image_analysis():
+    # Handle tmp directory
+    if os.path.exists(tmp_directory):
+        for file in os.listdir(tmp_directory):
+            os.remove(os.path.join(tmp_directory, file))
+
+    results = {}
+    for filename in os.listdir(directory_path):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            image_path = os.path.join(directory_path, filename)
+            image_name = os.path.splitext(filename)[0]
+            image_results = analyze_image(image_path, image_name)
+            results.update(image_results)
+    return results
+
 # main
 if __name__ == '__main__':
     json_file = 'map.json'
@@ -644,6 +659,12 @@ if __name__ == '__main__':
     if os.path.exists(json_file):
         # Prompt the user to decide whether to perform new image analysis or use existing data
         user_input = input("The map.json file already exists. Do you want to proceed with new image analysis? (y/n): ")
+
+        for filename in os.listdir(directory_path):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                image_name = os.path.splitext(filename)[0]
+                image_names.append(image_name)
+
         if user_input.lower() != 'y':
             # If the user chooses not to perform new analysis, use the existing map.json file
             print("Using existing map.json file to run the server.")

@@ -59,11 +59,6 @@ pip3 install -r "$SCRIPT_DIR/requirements.txt"
 echo
 echo "Running the application..."
 echo
-python3 "$SCRIPT_DIR/meetmap.py" "$SCRIPT_DIR/image"
+python3 "$SCRIPT_DIR/meetmap.py"
 
-echo
-echo "Cleaning up..."
 deactivate
-
-rm -rf "$SCRIPT_DIR/initPyEnv"
-echo "Environment cleanup complete."
