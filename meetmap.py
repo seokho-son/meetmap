@@ -6,7 +6,7 @@ import os
 import json
 import cv2  # OpenCV library for computer vision tasks
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, redirect, url_for, request, send_file
 import easyocr  # EasyOCR library for text recognition
 
 # Initializing Flask application
@@ -84,7 +84,7 @@ def analyze_image(image_path, image_name):
         image_np = np.array(image)  # Convert to numpy array (EasyOCR can use this directly)
         
         # Run EasyOCR
-        results = reader.readtext(image_np, allowlist ='0123456789L-', detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
+        results = reader.readtext(image_np, allowlist ='0123456789LG-', detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
 
         for (bbox, text, confidence) in results:
             if confidence > 0.5:  # Only consider results with the confidence
@@ -105,7 +105,7 @@ def analyze_image(image_path, image_name):
     data = run_ocr_on_all_modes(ocr_image)
 
     draw = ImageDraw.Draw(resized_image)
-    font_size = 15
+    font_size = 12
     font = ImageFont.truetype(font_path, font_size)
     font_size = 10
     fontSmall = ImageFont.truetype(font_path, font_size)
@@ -115,11 +115,11 @@ def analyze_image(image_path, image_name):
     for i in range(len(data['text'])):
         if int(data['conf'][i]) > 1:  # Using low confidence texts as well
             text = data['text'][i].strip()
-            draw.text((data['left'][i], data['top'][i] + data['height'][i]), f"{text}({data['conf'][i]}%)", fill="green", font=font)
+            draw.text((data['left'][i], data['top'][i] + data['height'][i]), f"{text}/{data['conf'][i]}%", fill="green", font=font)
             if text:
                 print(f"{text} (Confidence: {data['conf'][i]}%)")
                 # Extract room number patterns
-                matches = re.findall(r'\b(L?\d{2,3}(-\d+)?(~\d+)?)\b', text)
+                matches = re.findall(r'\b((L|G)?\d{2,3}(-\d+)?(~\d+)?)\b', text)
                 for match in matches:
                     # Check for range or list patterns
                     if '~' in match[0]:
@@ -288,7 +288,7 @@ def calculate_arrow_path(center_x, center_y, box_x, box_y, box_w, box_h):
 
     return path
 
-def draw_question_mark(draw, message, position, size=130, fill="yellow"):
+def draw_label(draw, message, position, size=130, fill="yellow"):
     """
     Draws a question mark at the given position.
     :param draw: ImageDraw object.
@@ -297,19 +297,24 @@ def draw_question_mark(draw, message, position, size=130, fill="yellow"):
     :param fill: Color of the question mark.
     """
 
-    font_size = 30
+    font_size = 22
     font = ImageFont.truetype(font_path, font_size)
 
-    # Calculate the rectangle coordinates based on the position and size
+    # Calculate the size of the text
+    text_bbox = draw.textbbox((0, 0), message, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+
+    # Calculate the rectangle coordinates based on the position and text size
     x, y = position
     y = y + 30
-    rectangle_position = (x, y, x + size, y + font_size)
+    rectangle_position = (x - 2, y, x + text_width + 5, y + text_height + 10)
 
     # Draw the rectangle
     draw.rectangle(rectangle_position, fill="black")
 
-    # Draw the question mark and message
-    draw.text((x, y), " ? " + message, fill=fill, font=font)
+    # Draw the text on top of the rectangle
+    draw.text((x, y), message, fill=fill, font=font)
 
 def calculate_room_similarity(requested_room, available_rooms):
     """
@@ -319,96 +324,81 @@ def calculate_room_similarity(requested_room, available_rooms):
     :return: The most similar room number.
     """
     def similarity_score(room1, room2):
-        common_prefix_len = len(os.path.commonprefix([room1, room2]))
+        # Determine the length of the shorter room number
+        min_length = min(len(room1), len(room2))
+    
+        # Initialize the similarity score
+        score = 0
+    
+        # Compare each character with decreasing weights
+        for i in range(min_length):
+            weight = 4 ** (10 - i)
+            if room1[i] == room2[i]:
+                score += weight
+            else:
+                score -= abs(ord(room1[i]) - ord(room2[i])) * weight
+            # Debugging output for specific cases
+            if room2 in ["7-565-1", "7-566"]:
+                print(f"Comparing {room1} and {room2}:")
+                print(f"  Character {i}: {room1[i]} vs {room2[i]}")
+                print(f"  Weight: {weight}")
+                print(f"  Score: {score}")
 
-        num_part1 = re.sub("[^0-9]", "", room1)
-        num_part2 = re.sub("[^0-9]", "", room2)
-
-        num_difference = abs(int(num_part1) - int(num_part2)) if num_part1.isdigit() and num_part2.isdigit() else float('inf')
-
-        return common_prefix_len * 10000 - num_difference
+        return score
 
     similarities = [(room, similarity_score(requested_room, room)) for room in available_rooms]
     return max(similarities, key=lambda x: x[1])[0] if similarities else None
 
 
 # Flask route definitions...
-@app.route('/room/<room_number>', methods=['GET'])
-def get_room_coordinates(room_number):
+
+@app.route('/', methods=['GET'])
+def list_apis():
     """
-    Flask route to get the coordinates of a specific room number.
-    :param room_number: The room number requested by the client.
-    :return: JSON response with the room's coordinates or an error message.
+    list all available API endpoints.
+    :return: JSON response with information about all routes.
     """
-    analyzed_results = load_results_from_json()
-    if room_number in analyzed_results:
-        return jsonify(analyzed_results[room_number])
-    else:
-        return jsonify({"error": "Room number not found"}), 404
+    routes = []
+    for rule in app.url_map.iter_rules():
+        methods = ','.join(sorted(rule.methods))
+        endpoint = rule.endpoint
+        url = str(rule)
+        doc = app.view_functions[endpoint].__doc__ if app.view_functions[endpoint].__doc__ else "No description available"
+        doc = doc.strip().replace('\n', ' ')
+        routes.append({
+            'endpoint': endpoint,
+            'methods': methods,
+            'url': url,
+            'description': doc
+        })
+    return jsonify(routes)
 
 @app.route('/room', methods=['GET'])
 def list_room_numbers():
     """
-    Flask route to list all available room numbers.
+    list all available room numbers.
     :return: JSON response with a list of all room numbers.
     """
     analyzed_results = load_results_from_json()
     sorted_room_numbers = sorted(analyzed_results.keys())
     return jsonify(sorted_room_numbers)
 
-@app.route('/room', methods=['POST'])
-def add_room():
-    """
-    Flask route to add a new room number with its data.
-    :return: JSON response indicating success or error.
-    """
-    analyzed_results = load_results_from_json()
-    data = request.json
-    room_number = data.get('room_number')
+# @app.route('/room', methods=['POST'])
+# def add_room():
+#     """
+#     add a new room number with its data.
+#     :return: JSON response indicating success or error.
+#     """
+#     analyzed_results = load_results_from_json()
+#     data = request.json
+#     room_number = data.get('room_number')
 
-    if room_number and room_number not in analyzed_results:
-        analyzed_results[room_number] = data
-        save_results_to_json(analyzed_results)
-        return jsonify({"message": "Room added"}), 201
-    else:
-        return jsonify({"error": "Invalid request or room number already exists"}), 400
-
-@app.route('/room/<room_number>', methods=['PUT'])
-def update_room(room_number):
-    """
-    Flask route to update the data of an existing room number.
-    :param room_number: The room number to update.
-    :return: JSON response indicating success or error.
-    """
-    analyzed_results = load_results_from_json()
-    data = request.json
-
-    if room_number in analyzed_results:
-        analyzed_results[room_number] = data
-        save_results_to_json(analyzed_results)
-        return jsonify({"message": "Room updated"})
-    else:
-        return jsonify({"error": "Room number not found"}), 404
-
-@app.route('/api', methods=['GET'])
-def list_apis():
-    """
-    Flask route to list all available API endpoints.
-    :return: JSON response with information about all routes.
-    """
-    routes = []
-    for rule in app.url_map.iter_rules():
-        methods = ','.join(sorted(rule.methods))
-        routes.append({'endpoint': rule.endpoint, 'methods': methods, 'url': str(rule)})
-    return jsonify(routes)
-
-@app.route('/image', methods=['GET'])
-def get_image():
-    """
-    Flask route to retrieve a specific image.
-    :return: Image file response.
-    """
-    return send_file(image_path, mimetype='image/png')
+#     if room_number and room_number not in analyzed_results:
+#         analyzed_results[room_number] = data
+#         save_results_to_json(analyzed_results)
+#         return jsonify({"message": "Room added"}), 201
+#     else:
+#         return jsonify({"error": "Invalid request or room number already exists"}), 400
 
 def expand_range(range_str):
     """
@@ -438,12 +428,10 @@ def is_number_in_range(num_str, range_str):
     expanded_range = expand_range(range_str)
     return num_str in expanded_range
 
-@app.route('/view/<room_number>', methods=['GET'])
-@app.route('/v/<room_number>', methods=['GET'])
-@app.route('/r/<room_number>', methods=['GET'])
+@app.route('/room/<room_number>', methods=['GET'])
 def view_room_highlighted(room_number):
     """
-    Flask route to view an image with a specific room number highlighted.
+    view an image with a specific room number highlighted.
     This endpoint sends an image with the specified room number highlighted, indicating its location.
     :param room_number: The room number to be highlighted in the image.
     :return: Image response with the specified room number highlighted, or an error message if not found.
@@ -458,12 +446,13 @@ def view_room_highlighted(room_number):
     
     # Remove "호" from the room number
     room_number = room_number.replace("호", "")
+    room_number = room_number.upper()
 
     # Check if room_number starts with any of the image names
-    print("Image Names: ", image_names)
-    if not any(room_number.startswith(name) for name in image_names):
-        return jsonify({"Sorry": "Map for "  + room_number + " is not supported yet"}), 404
-    
+    if not any(room_number.startswith(name.upper()) for name in image_names):
+        supported_maps = ", ".join(sorted(image_names))
+        return jsonify({"Message": "Map for " + room_number + " is not supported yet.", "Supported Maps": supported_maps}), 404    
+
     force = request.args.get('force', '').lower() == 'true'
     highlighted_image_path = view_room_highlighted_logic(room_number, force)
 
@@ -510,10 +499,12 @@ def view_room_highlighted_logic(room_number, force=False):
         room_center_y = room_info['y'] + room_info['h'] // 2
 
         # Enlarge the mark box
-        x_expand = room_info['w'] * 0.1
-        y_expand = room_info['h'] * 0.1
+        x_expand = room_info['w'] * 0.3
+        y_expand = room_info['h'] * 0.3
         x, y, w, h = room_info['x'] - x_expand, room_info['y'] - y_expand, room_info['w'] + 2 * x_expand, room_info['h'] + 2 * y_expand
-        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=7)
+        draw.rectangle(((x, y), (x + w, y + h)), outline="yellow", width=7)
+        draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=3)
+
 
         # Draw arrow and text
         path = calculate_arrow_path(image_center_x, image_center_y, x, y, w, h)
@@ -521,16 +512,12 @@ def view_room_highlighted_logic(room_number, force=False):
             draw_dashed_line(draw, path[i], path[i + 1], width=5, fill="blue")
 
         draw_arrow_head(draw, path[-2], path[-1], fill="blue")
+        message1 = f":{room_number}"
         if similar_room:
-            message1 = f"{room_number}"
-            question_mark_pos = (path[-1][0], path[-1][1])
-            draw_question_mark(draw, message1 , question_mark_pos)
-            # font_size = 30 
-            # font = ImageFont.truetype(font_path, font_size)
-            # message1 = f"No exact match: [{room_number}]"
-            # draw.text((image_center_x + 10, image_center_y + 130), message1, fill="green", font=font)
-            # message2 = f"Approximately similar: [{similar_room}]"
-            # draw.text((image_center_x + 10, image_center_y + 130 + 35), message2, fill="green", font=font)
+            message1 = f"? {room_number}"
+
+        mark_pos = (path[-1][0], path[-1][1])
+        draw_label(draw, message1 , mark_pos)
 
         image.save(highlighted_image_path)
         return highlighted_image_path
@@ -566,7 +553,7 @@ def combine_images(tmp_directory, image_pattern):
 @app.route('/validate', methods=['GET'])
 def validate_images():
     """
-    Flask route to combine multiple images into one and return the combined image.
+    combine multiple images into one and return the combined image.
     If a 'testset' query parameter is provided, it reads room numbers from 'testset.txt',
     generates images for each room number using view_room_highlighted, and combines these images.
     The 'force' query parameter can be used to force the regeneration of the combined image.
