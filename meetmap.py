@@ -6,7 +6,7 @@ import os
 import json
 import cv2  # OpenCV library for computer vision tasks
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
-from flask import Flask, jsonify, redirect, url_for, request, send_file
+from flask import Flask, jsonify, redirect, url_for, request, send_file, Response
 import easyocr  # EasyOCR library for text recognition
 
 # Initializing Flask application
@@ -28,19 +28,22 @@ if not os.path.exists(directory_path):
     sys.exit(1)    
 
 # Load alias.json once at the start of the program
-try:
-    with open('alias.json', 'r', encoding='utf-8') as file:
-        alias_data = json.load(file)
-except FileNotFoundError:
-    print("alias.json file not found.")
-    sys.exit(1)
-except json.JSONDecodeError:
-    print("Error decoding alias.json file.")
-    sys.exit(1)
-except Exception as e:
-    print(f"An unexpected error occurred while loading alias.json: {e}")
-    sys.exit(1)
-    
+def load_alias_data():
+    try:
+        with open('alias.json', 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        print("alias.json file not found.")
+        sys.exit(1)
+    except json.JSONDecodeError:
+        print("Error decoding alias.json file.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred while loading alias.json: {e}")
+        sys.exit(1)
+
+alias_data = load_alias_data()
+
 # Function to analyze an image and extract room number information
 def analyze_image(image_path, image_name):
     """
@@ -397,6 +400,23 @@ def list_room_numbers():
     sorted_room_numbers = sorted(analyzed_results.keys())
     return jsonify(sorted_room_numbers)
 
+@app.route('/alias', methods=['GET'])
+def get_alias():
+    """
+    Reload alias.json and return the updated list.
+    """
+    global alias_data
+    try:
+        alias_data = load_alias_data()
+        response = json.dumps(alias_data, ensure_ascii=False)
+        return Response(response, content_type='application/json; charset=utf-8')
+    except FileNotFoundError:
+        return jsonify({"error": "alias.json file not found."}), 404
+    except json.JSONDecodeError:
+        return jsonify({"error": "Error decoding alias.json file."}), 500
+    except Exception as e:
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+    
 # @app.route('/room', methods=['POST'])
 # def add_room():
 #     """
@@ -472,6 +492,8 @@ def view_room_highlighted(room_number):
         # Remove "호" from the room number
         room_number = room_number.replace("호", "")
         room_number = room_number.upper()
+
+        print(f"Requested Room Number: {room_number}")
 
         # Check if room_number starts with any of the image names
         if not any(room_number.startswith(name.upper()) for name in image_names):
