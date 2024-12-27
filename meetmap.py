@@ -22,11 +22,25 @@ tmp_directory = "tmp"
 if not os.path.exists(tmp_directory):
     os.makedirs(tmp_directory)
 
-directory_path = "image"
+directory_path = "image/map"
 if not os.path.exists(directory_path):
-    print("image directory does not exist.")
+    print("image/map directory does not exist.")
     sys.exit(1)    
 
+# Load alias.json once at the start of the program
+try:
+    with open('alias.json', 'r', encoding='utf-8') as file:
+        alias_data = json.load(file)
+except FileNotFoundError:
+    print("alias.json file not found.")
+    sys.exit(1)
+except json.JSONDecodeError:
+    print("Error decoding alias.json file.")
+    sys.exit(1)
+except Exception as e:
+    print(f"An unexpected error occurred while loading alias.json: {e}")
+    sys.exit(1)
+    
 # Function to analyze an image and extract room number information
 def analyze_image(image_path, image_name):
     """
@@ -337,12 +351,12 @@ def calculate_room_similarity(requested_room, available_rooms):
                 score += weight
             else:
                 score -= abs(ord(room1[i]) - ord(room2[i])) * weight
-            # Debugging output for specific cases
-            if room2 in ["7-565-1", "7-566"]:
-                print(f"Comparing {room1} and {room2}:")
-                print(f"  Character {i}: {room1[i]} vs {room2[i]}")
-                print(f"  Weight: {weight}")
-                print(f"  Score: {score}")
+            # # Debugging output for specific cases
+            # if room2 in ["7-565-1", "7-566"]:
+            #     print(f"Comparing {room1} and {room2}:")
+            #     print(f"  Character {i}: {room1[i]} vs {room2[i]}")
+            #     print(f"  Weight: {weight}")
+            #     print(f"  Score: {score}")
 
         return score
 
@@ -436,30 +450,44 @@ def view_room_highlighted(room_number):
     :param room_number: The room number to be highlighted in the image.
     :return: Image response with the specified room number highlighted, or an error message if not found.
     """
-    
-    # Define the patterns to be replaced
-    patterns_to_replace = [" 동 ", "동-", "동 ", " 동", "동", " - ", "- ", " -", " "]
-    
-    # Replace the patterns with "-"
-    for pattern in patterns_to_replace:
-        room_number = room_number.replace(pattern, "-")
-    
-    # Remove "호" from the room number
-    room_number = room_number.replace("호", "")
-    room_number = room_number.upper()
 
-    # Check if room_number starts with any of the image names
-    if not any(room_number.startswith(name.upper()) for name in image_names):
-        supported_maps = ", ".join(sorted(image_names))
-        return jsonify({"Message": "Map for " + room_number + " is not supported yet.", "Supported Maps": supported_maps}), 404    
+    try:
+        # Normalize room_number by removing spaces
+        normalized_room_number = room_number.replace(" ", "")
+        
+        # Check alias_data for a matching key
+        for alias, replacement in alias_data.items():
+            normalized_alias = alias.replace(" ", "")
+            if normalized_alias in normalized_room_number:
+                room_number = re.sub(re.escape(alias), replacement, room_number, flags=re.IGNORECASE)
+                break    
+    
+        # Define the patterns to be replaced
+        patterns_to_replace = [" 동 ", "동-", "동 ", " 동", "동", " - ", "- ", " -", " "]
+        
+        # Replace the patterns with "-"
+        for pattern in patterns_to_replace:
+            room_number = room_number.replace(pattern, "-")
+        
+        # Remove "호" from the room number
+        room_number = room_number.replace("호", "")
+        room_number = room_number.upper()
 
-    force = request.args.get('force', '').lower() == 'true'
-    highlighted_image_path = view_room_highlighted_logic(room_number, force)
+        # Check if room_number starts with any of the image names
+        if not any(room_number.startswith(name.upper()) for name in image_names):
+            supported_maps = ", ".join(sorted(image_names))
+            return jsonify({"Message": "Map for " + room_number + " is not supported yet.", "Supported Maps": supported_maps}), 404    
 
-    if os.path.exists(highlighted_image_path):
-        return send_file(highlighted_image_path, mimetype='image/png')
-    else:
-        return jsonify({"error": "Room number not found or image could not be created"}), 404
+        force = request.args.get('force', '').lower() == 'true'
+        highlighted_image_path = view_room_highlighted_logic(room_number, force)
+
+        if os.path.exists(highlighted_image_path):
+            return send_file(highlighted_image_path, mimetype='image/png')
+        else:
+            return jsonify({"error": "Room number not found or image could not be created"}), 404
+
+    except Exception as e:
+        return jsonify({"Message": f"An error occurred: {e}"}), 500
 
 def view_room_highlighted_logic(room_number, force=False):
     """
@@ -519,7 +547,30 @@ def view_room_highlighted_logic(room_number, force=False):
         mark_pos = (path[-1][0], path[-1][1])
         draw_label(draw, message1 , mark_pos)
 
-        image.save(highlighted_image_path)
+        # Check for additional image in image/room directory
+        room_image_path = os.path.join("image/room", f"{room_number}.jpg")
+        if os.path.exists(room_image_path):
+            room_image = Image.open(room_image_path)
+            
+            # Resize the room image based on the height of the main image
+            new_height = image.size[1] // 3
+            aspect_ratio = room_image.size[0] / room_image.size[1]
+            new_width = int(new_height * aspect_ratio)
+            room_image = room_image.resize((new_width, new_height))
+
+            # Create a new image with enough width to accommodate both images
+            combined_width = image.size[0] + room_image.size[0]
+            combined_image = Image.new('RGB', (combined_width, image.size[1]))
+
+            # Paste the main image and the room image side by side
+            combined_image.paste(image, (0, 0))
+            combined_image.paste(room_image, (image.size[0], (image.size[1] - new_height) // 2))
+
+            # Save the combined image
+            combined_image.save(highlighted_image_path)
+        else:
+            # Save the main image if no additional image is found
+            image.save(highlighted_image_path)
         return highlighted_image_path
     else:
         return None
@@ -531,7 +582,15 @@ def combine_images(tmp_directory, image_pattern):
     :param image_pattern: The pattern to match for image filenames.
     :return: Combined image object.
     """
-    image_files = [f for f in os.listdir(tmp_directory) if image_pattern in f]
+
+    def sort_key(filename):
+        match = re.match(r"(\d+)-(.+)", filename)
+        if match:
+            return (int(match.group(1)), match.group(2))
+        return filename
+
+    image_files = sorted([f for f in os.listdir(tmp_directory) if image_pattern in f], key=sort_key)
+    # print("Sorted image files:", image_files)
     images = [Image.open(os.path.join(tmp_directory, img_file)) for img_file in image_files]
 
     # Assuming all images are of the same size for simplicity
