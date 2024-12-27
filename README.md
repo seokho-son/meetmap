@@ -19,8 +19,6 @@ Clone the repository to your local machine:
 git clone https://github.com/your-username/meetmap.git
 cd meetmap
 ```
-Add image files to ./image/ directory.
-Example of the file name of an image file is `7-5.png` which means the fifth floor of the building 7.
 
 ### Prerequisites
 - Python 3.x
@@ -37,6 +35,25 @@ pip install -r requirements.txt
 
 ### Running the Application
 
+
+Create the `./image/map/` directory and add image files to this directory.
+An example of an image file name is `7-5.png`, which represents the fifth floor of building 7.
+
+(Optional) Create the `./image/room/` directory and add pictures of rooms to this directory.
+An example of a room image file name is `7-511.png`, which represents room 511 in building 7.
+
+On Ubuntu:
+```bash
+mkdir -p ./image/map ./image/room
+```
+On Windows:
+```cmd
+mkdir image\map image\room
+```
+
+Update `alias.json` to provide your custom aliases for the rooms and buildings.
+
+
 Run the application with the following command:
 
 ```bash
@@ -48,7 +65,7 @@ Script for Ubuntu users. (will automate installation)
 ./init.sh
 ```
 
-If a map.json file already exists, the program will ask whether to perform a new analysis or use the existing data. The analyzed data is saved in a temporary directory (tmp) and as a JSON file (map.json).
+If a map.json file already exists, the program will ask whether to perform a new analysis or use the existing data. The analyzed data is saved in a temporary directory (`tmp/`) and as a JSON file (`map.json`).
 
 ### API Endpoints
 1. GET /: Lists all available API endpoints.
