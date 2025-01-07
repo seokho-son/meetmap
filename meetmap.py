@@ -64,7 +64,7 @@ def analyze_image(image_path, image_name):
     # Resizing the image
     original_width, original_height = image.size
     aspect_ratio = original_width / original_height
-    new_height = 1000
+    new_height = 1400
     new_width = int(aspect_ratio * new_height)
     resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
     resized_image.save(os.path.join(tmp_directory, f'{image_name}-map.png'))
@@ -101,10 +101,10 @@ def analyze_image(image_path, image_name):
         image_np = np.array(image)  # Convert to numpy array (EasyOCR can use this directly)
         
         # Run EasyOCR
-        results = reader.readtext(image_np, allowlist ='0123456789LG-', detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
+        results = reader.readtext(image_np, allowlist ='0123456789LGB-', detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
 
         for (bbox, text, confidence) in results:
-            if confidence > 0.5:  # Only consider results with the confidence
+            if confidence > 0.4:  # Only consider results with the confidence
                 # Extract bounding box coordinates
                 (x_min, y_min), (x_max, y_max) = bbox[0], bbox[2]
                 identifier = (text.strip(), int(x_min), int(y_min), int(x_max - x_min), int(y_max - y_min))
@@ -130,13 +130,13 @@ def analyze_image(image_path, image_name):
     # Parsing the extracted text and coordinates
     # Drawing rectangles around detected text on the image
     for i in range(len(data['text'])):
-        if int(data['conf'][i]) > 1:  # Using low confidence texts as well
+        if int(data['conf'][i]) > 0.4:  # Using low confidence texts as well
             text = data['text'][i].strip()
             draw.text((data['left'][i], data['top'][i] + data['height'][i]), f"{text}/{data['conf'][i]}%", fill="green", font=font)
             if text:
                 print(f"{text} (Confidence: {data['conf'][i]}%)")
                 # Extract room number patterns
-                matches = re.findall(r'\b((L|G)?\d{2,3}(-\d+)?(~\d+)?)\b', text)
+                matches = re.findall(r'\b((L|G|B)?\d{2,3}(-\d+)?(~\d+)?)\b', text)
                 for match in matches:
                     # Check for range or list patterns
                     if '~' in match[0]:
@@ -206,17 +206,48 @@ def save_results_to_json(analyzed_results, json_file='map.json'):
     with open(json_file, 'w') as file:
         json.dump(analyzed_results, file, indent=4)
 
-def load_results_from_json(json_file='map.json'):
+def load_results_from_json(json_file='map.json', customization_file='map-customization.json'):
     """
-    Loads analyzed room data from a JSON file.
-    :param json_file: The name of the JSON file to load data from.
-    :return: A dictionary containing the loaded room data.
+    Loads analyzed room data from JSON files and merges them.
+    :param json_file: The name of the main JSON file to load data from.
+    :param customization_file: The name of the customization JSON file to load data from.
+    :return: A dictionary containing the merged room data.
     """
-    if os.path.exists(json_file):
-        with open(json_file, 'r') as file:
-            return json.load(file)
-    else:
-        return {}
+    data = {}
+    
+    # Load main JSON file
+    try:
+        if os.path.exists(json_file):
+            with open(json_file, 'r') as file:
+                data = json.load(file)
+        else:
+            print(f"File {json_file} does not exist.")
+    except Exception as e:
+        print(f"Error loading {json_file}: {e}")
+    
+    # Load customization JSON file and merge with main data
+    try:
+        if os.path.exists(customization_file):
+            with open(customization_file, 'r') as file:
+                customization_data = json.load(file)
+                for key, value in customization_data.items():
+                    if key in data:
+                        data[key].update(value)
+                        print(f"Customization data for {key}{value} has been merged successfully.")
+                        print(f"Current data for {key}: {data[key]}")
+                    else:
+                        data[key] = value
+                        print(f"Customization data for {key}{value} has been added successfully.")
+                        print(f"Current data for {key}: {data[key]}")
+                # print("Customization data has been merged successfully.")
+                # print("Merged data:")
+                # print(json.dumps(data, indent=4, ensure_ascii=False))
+        else:
+            print(f"File {customization_file} does not exist.")
+    except Exception as e:
+        print(f"Error loading {customization_file}: {e}")
+    
+    return data
     
 
 
@@ -495,11 +526,13 @@ def view_room_highlighted(room_number):
 
         print(f"Requested Room Number: {room_number}")
 
-        # Check if room_number starts with any of the image names
-        if not any(room_number.startswith(name.upper()) for name in image_names):
-            supported_maps = ", ".join(sorted(image_names))
-            return jsonify({"Message": "Map for " + room_number + " is not supported yet.", "Supported Maps": supported_maps}), 404    
+        analyzed_results = load_results_from_json()
 
+        # Check if room_number starts with any of the image names or if it exists in analyzed_results
+        if room_number not in analyzed_results and not any(room_number.startswith(name.upper()) for name in image_names):
+            supported_maps = ", ".join(sorted(image_names))
+            return jsonify({"Message": "Map for " + room_number + " is not supported yet.", "Supported Maps": supported_maps}), 404
+        
         force = request.args.get('force', '').lower() == 'true'
         highlighted_image_path = view_room_highlighted_logic(room_number, force)
 
@@ -518,23 +551,27 @@ def view_room_highlighted_logic(room_number, force=False):
     :param force: Boolean flag to force regeneration of the image.
     :return: Path to the generated image, or None if not found.
     """
-    analyzed_results = load_results_from_json()
+
     highlighted_image_path = os.path.join(tmp_directory, f"{room_number}-highlighted.png")
 
     # Check if the image already exists and if force regeneration is not required
     if not force and os.path.exists(highlighted_image_path):
         return highlighted_image_path
 
+    analyzed_results = load_results_from_json()
+
     # Logic to generate a new highlighted image
     if room_number in analyzed_results:
         room_info = analyzed_results[room_number]
         similar_room = None  # Exact match found
+        print(f"Exact match found for {room_number}")
     else:
         similar_room = calculate_room_similarity(room_number, analyzed_results.keys())
         if not similar_room or similar_room == room_number:  # Low similarity or no match found
             return None
         room_info = analyzed_results[similar_room]
-
+        print(f"Similar room found for {room_number}")
+              
     # Load the floor image and prepare for drawing
     floor_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-map.png")
     if os.path.exists(floor_image_path):
@@ -559,9 +596,9 @@ def view_room_highlighted_logic(room_number, force=False):
         # Draw arrow and text
         path = calculate_arrow_path(image_center_x, image_center_y, x, y, w, h)
         for i in range(len(path) - 1):
-            draw_dashed_line(draw, path[i], path[i + 1], width=5, fill="blue")
+            draw_dashed_line(draw, path[i], path[i + 1], width=8, interval=12, fill="#32CD32")
 
-        draw_arrow_head(draw, path[-2], path[-1], fill="blue")
+        draw_arrow_head(draw, path[-2], path[-1], arrow_size=40, fill="#32CD32")
         message1 = f":{room_number}"
         if similar_room:
             message1 = f"? {room_number}"
@@ -748,6 +785,6 @@ if __name__ == '__main__':
         save_results_to_json(analyzed_results, json_file)  # Save the analyzed results to a new map.json file
 
     # Start the Flask server
-        # Run the Flask app with debug mode on, accessible on all interfaces on port 1111
-    app.run(debug=True, host='0.0.0.0', port=1111)  
+        # Run the Flask app with debug mode on, accessible on all interfaces on port 80
+    app.run(debug=True, host='0.0.0.0', port=80)  
 
