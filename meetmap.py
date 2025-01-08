@@ -14,8 +14,18 @@ app = Flask(__name__)
 
 # Initialize EasyOCR Reader (supports multiple languages, e.g., ['en', 'ko'])
 reader = easyocr.Reader(['en'], gpu=True)  # Use GPU if available
-# DejaVuSans.ttf Font License - https://dejavu-fonts.github.io/License.html
-font_path = "assets/DejaVuSans.ttf"
+
+# NanumSquareL.ttf Font License - https://help.naver.com/service/30016/contents/18088?osType=PC&lang=ko
+font_path = "assets/NanumSquareL.ttf"
+# Copyright (c) 2010, NAVER Corporation (https://www.navercorp.com/) with Reserved Font Name Nanum, 
+# Naver Nanum, NanumGothic, Naver NanumGothic, NanumMyeongjo, Naver NanumMyeongjo, NanumBrush, 
+# Naver NanumBrush, NanumPen, Naver NanumPen, Naver NanumGothicEco, NanumGothicEco, 
+# Naver NanumMyeongjoEco, NanumMyeongjoEco, Naver NanumGothicLight, NanumGothicLight, 
+# NanumBarunGothic, Naver NanumBarunGothic, NanumSquareRound, NanumBarunPen, MaruBuri, NanumSquareNeo
+# This Font Software is licensed under the SIL Open Font License, Version 1.1.
+# This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL
+# SIL OPEN FONT LICENSE
+# Version 1.1 - 26 February 2007 
 
 # Handle directory
 tmp_directory = "tmp"
@@ -336,7 +346,7 @@ def calculate_arrow_path(center_x, center_y, box_x, box_y, box_w, box_h):
 
     return path
 
-def draw_label(draw, message, position, size=130, fill="yellow"):
+def draw_label(draw, message, position, font_size=30, fill="yellow"):
     """
     Draws a question mark at the given position.
     :param draw: ImageDraw object.
@@ -345,7 +355,6 @@ def draw_label(draw, message, position, size=130, fill="yellow"):
     :param fill: Color of the question mark.
     """
 
-    font_size = 22
     font = ImageFont.truetype(font_path, font_size)
 
     # Calculate the size of the text
