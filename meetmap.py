@@ -37,17 +37,55 @@ if not os.path.exists(directory_path):
     print("image/map directory does not exist.")
     sys.exit(1)    
 
+def load_json_file(file_path):
+    """
+    Loads a JSON file, handling different encodings (e.g., UTF-8, UTF-8 with BOM).
+    :param file_path: Path to the JSON file.
+    :return: Parsed JSON object or an empty dictionary if loading fails.
+    """
+    try:
+        # First attempt: Read the file as UTF-8 (most common case)
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except UnicodeDecodeError:
+        print(f"UTF-8 decoding failed for {file_path}. Retrying with UTF-8-sig...")
+        try:
+            # Second attempt: Handle UTF-8 with BOM
+            with open(file_path, 'r', encoding='utf-8-sig') as file:
+                return json.load(file)
+        except UnicodeDecodeError:
+            print(f"UTF-8-sig decoding also failed for {file_path}. Retrying without encoding...")
+            try:
+                # Third attempt: Default system encoding (may work for cp949 or other encodings)
+                with open(file_path, 'r') as file:
+                    return json.load(file)
+            except Exception as e:
+                print(f"Error reading JSON file {file_path}: {e}")
+    except json.JSONDecodeError as e:
+        print(f"JSON decoding error in {file_path}: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred while loading {file_path}: {e}")
+    
+    # Return an empty dictionary if all attempts fail
+    return {}
+
 # Load alias.json once at the start of the program
 def load_alias_data():
-    try:
-        with open('alias.json', 'r', encoding='utf-8') as file:
-            return json.load(file)
-    except FileNotFoundError:
+    """
+    Loads alias data from alias.json, handling different encodings.
+    :return: Parsed alias data as a dictionary, or an empty dictionary if loading fails.
+    """
+    alias_file = 'alias.json'  # Define the file path
+    if not os.path.exists(alias_file):
         print("alias.json file not found.")
-    except json.JSONDecodeError:
-        print("Error decoding alias.json file.")
-    except Exception as e:
-        print(f"An unexpected error occurred while loading alias.json: {e}")
+        return {}
+    
+    alias_data = load_json_file(alias_file)  # Use the helper function
+    if alias_data:
+        return alias_data
+    else:
+        print("Failed to load alias.json or file is empty.")
+        return {}
 
 alias_data = load_alias_data()
 
@@ -210,8 +248,12 @@ def save_results_to_json(analyzed_results, json_file='map.json'):
     :param analyzed_results: The dictionary containing room data to be saved.
     :param json_file: The name of the JSON file to save data into.
     """
-    with open(json_file, 'w') as file:
-        json.dump(analyzed_results, file, indent=4)
+    try:
+        with open(json_file, 'w', encoding='utf-8') as file:  # Use UTF-8 encoding
+            json.dump(analyzed_results, file, indent=4, ensure_ascii=False)  # Ensure non-ASCII characters are preserved
+        print(f"Data successfully saved to {json_file}")
+    except Exception as e:
+        print(f"Failed to save data to {json_file}: {e}")
 
 def load_results_from_json(json_file='map.json', customization_file='map-customization.json'):
     """
@@ -220,23 +262,13 @@ def load_results_from_json(json_file='map.json', customization_file='map-customi
     :param customization_file: The name of the customization JSON file to load data from.
     :return: A dictionary containing the merged room data.
     """
-    data = {}
-    
-    # Load main JSON file
-    try:
-        if os.path.exists(json_file):
-            with open(json_file, 'r') as file:
-                data = json.load(file)
-        else:
-            print(f"File {json_file} does not exist.")
-    except Exception as e:
-        print(f"Error loading {json_file}: {e}")
+    data = load_json_file(json_file)
     
     # Load customization JSON file and merge with main data
     try:
         if os.path.exists(customization_file):
-            with open(customization_file, 'r') as file:
-                customization_data = json.load(file)
+            customization_data = load_json_file(customization_file)  # Use the helper function
+            if customization_data:
                 for key, value in customization_data.items():
                     if key in data:
                         data[key].update(value)
@@ -971,8 +1003,7 @@ if __name__ == '__main__':
         if user_input.lower() != 'y':
             # If the user chooses not to perform new analysis, use the existing map.json file
             print("Using existing map.json file to run the server.")
-            with open(json_file, 'r') as f:
-                analyzed_results = load_results_from_json  # Load the analyzed results from the existing file
+            analyzed_results = load_results_from_json  # Load the analyzed results from the existing file
         else:
             # If the user chooses to perform new analysis
             analyzed_results = perform_image_analysis()  # Perform image analysis to extract room data
