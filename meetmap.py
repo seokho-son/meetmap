@@ -425,10 +425,10 @@ def draw_label(draw, message, position, font_size=30, fill="yellow"):
     # Draw the text on top of the rectangle
     draw.text((x, y), message, fill=fill, font=font)
 
-def calculate_room_similarity(requested_room, available_rooms):
+def calculate_room_similarity(org_request_id, available_rooms):
     """
     Calculate similarity score between the requested room and available rooms.
-    :param requested_room: The requested room number as a string.
+    :param org_request_id: The requested room number as a string.
     :param available_rooms: List of available room numbers as strings.
     :return: The most similar room number.
     """
@@ -455,7 +455,7 @@ def calculate_room_similarity(requested_room, available_rooms):
 
         return score
 
-    similarities = [(room, similarity_score(requested_room, room)) for room in available_rooms]
+    similarities = [(room, similarity_score(org_request_id, room)) for room in available_rooms]
     return max(similarities, key=lambda x: x[1])[0] if similarities else None
 
 
@@ -584,19 +584,19 @@ def is_number_in_range(num_str, range_str):
     expanded_range = expand_range(range_str)
     return num_str in expanded_range
 
-@app.route('/room/<room_id>', methods=['GET'])
-@app.route('/view/<room_id>', methods=['GET'])
-@app.route('/find/<room_id>', methods=['GET'])
-@app.route('/dir/<room_id>', methods=['GET'])
-@app.route('/r/<room_id>', methods=['GET'])
-@app.route('/v/<room_id>', methods=['GET'])
-@app.route('/f/<room_id>', methods=['GET'])
-@app.route('/d/<room_id>', methods=['GET'])
-def view_room_highlighted(room_id):
+@app.route('/room/<request_id>', methods=['GET'])
+@app.route('/view/<request_id>', methods=['GET'])
+@app.route('/find/<request_id>', methods=['GET'])
+@app.route('/dir/<request_id>', methods=['GET'])
+@app.route('/r/<request_id>', methods=['GET'])
+@app.route('/v/<request_id>', methods=['GET'])
+@app.route('/f/<request_id>', methods=['GET'])
+@app.route('/d/<request_id>', methods=['GET'])
+def view_room_highlighted(request_id):
     """
     View an image with a specific room number highlighted.
     This endpoint sends an image with the specified room number highlighted, indicating its location.
-    :param room_id: The room number to be highlighted in the image.
+    :param request_id: The room number to be highlighted in the image.
     :return: HTML response with the image or file response based on returnType parameter.
     """
 
@@ -605,12 +605,12 @@ def view_room_highlighted(room_id):
         y_param = request.args.get('y')
         note_param = request.args.get('note')
 
-        requested_room = room_id
+        org_request_id = request_id
         # Replace multiple consecutive "-" with a single "-"
-        room_id = re.sub(r'-+', '-', room_id)
+        request_id = re.sub(r'-+', '-', request_id)
 
-        # Normalize room_id by removing spaces
-        normalized_room_id = room_id.replace(" ", "")
+        # Normalize request_id by removing spaces
+        normalized_request_id = request_id.replace(" ", "")
         
         global alias_data
         alias_data = load_alias_data()
@@ -618,41 +618,50 @@ def view_room_highlighted(room_id):
 
         # Check alias_data for a matching key
         aliasReplacement = ""
-        if room_id not in analyzed_results:
+        if request_id not in analyzed_results:
             for alias, replacement in alias_data.items():
                 normalized_alias = alias.replace(" ", "")
                 # print(f"Normalized Alias: {normalized_alias}")
-                if normalized_alias in normalized_room_id:
+                if normalized_alias in normalized_request_id:
                     aliasReplacement = replacement
-                    room_id = re.sub(re.escape(normalized_alias), replacement, normalized_room_id, flags=re.IGNORECASE)
+                    request_id = re.sub(re.escape(normalized_alias), replacement, normalized_request_id, flags=re.IGNORECASE)
                     break    
 
-        # Define the patterns to be replaced
-        patterns_to_replace = ["동"]
-        
-        # Replace the patterns with "-" only if aliasReplacement is empty and room_id is not in analyzed_results
-        if aliasReplacement == "" and room_id not in analyzed_results:
-            for pattern in patterns_to_replace:
-                room_id = room_id.replace(pattern, "-")
-        else:
-            # If aliasReplacement is not empty, check and remove the last "호" from room_id if necessary
-            if not aliasReplacement.endswith("호") and room_id.endswith("호"):
-                room_id = room_id[:-1]
-
-        
-
         # Replace multiple consecutive "-" with a single "-"
-        room_id = re.sub(r'-+', '-', room_id)
+        request_id = re.sub(r'-+', '-', request_id)
+        
+        # Replace the patterns with "-" only if aliasReplacement is empty and request_id is not in analyzed_results
+        if request_id not in analyzed_results:
+            # Define the patterns to be replaced
+            patterns_to_replace = ["동"]
+            if aliasReplacement == "" :
+                for pattern in patterns_to_replace:
+                    request_id = request_id.replace(pattern, "-")
+                if request_id.endswith("호") or request_id.endswith("층"):
+                    request_id = request_id[:-1]                
+            else:
+                # If aliasReplacement is not empty, check and remove the last "호" from request_id if necessary
+                if not (aliasReplacement.endswith("호") or aliasReplacement.endswith("층")) and (request_id.endswith("호") or request_id.endswith("층")):
+                    request_id = request_id[:-1]
 
-        room_id = room_id.upper()
 
-        print(f"Requested Room Number: {room_id}")
+        
+        # Replace multiple consecutive "-" with a single "-"
+        request_id = re.sub(r'-+', '-', request_id)
 
+        request_id = request_id.upper()
 
-        # Check if room_id starts with any of the image names or if it exists in analyzed_results
-        if room_id not in analyzed_results and not any(room_id.startswith(name.upper()) for name in image_names):
+        isFloorRequest = False
+        if request_id in image_names:
+            isFloorRequest = True
+
+        print(f"Original Request: {org_request_id}")
+        print(f"Adjusted Request: {request_id} (isFloorRequest: {isFloorRequest})")
+
+        # Check if request_id starts with any of the image names or if it exists in analyzed_results
+        if request_id not in analyzed_results and not any(request_id.startswith(name.upper()) for name in image_names):
             response = {
-                "Message": f"Map for {room_id} is not supported yet.",
+                "Message": f"Map for {request_id} is not supported yet.",
                 "Supported Maps": sorted(image_names, key=sort_key)
             }
             return Response(
@@ -661,17 +670,19 @@ def view_room_highlighted(room_id):
                 status=404
             )
         force = request.args.get('force', '').lower() == 'true'
-        highlighted_image_path, floor_image_size = search_and_highlight(room_id, force)
-        room_id, image_size, room_x, room_y, room_w, room_h, floor_id, building_id, floor_only_id, similar_room = search_and_get_room_info(room_id)
+        highlighted_image_path, floor_image_size = search_and_highlight(request_id, force)
+        request_id, image_size, room_x, room_y, room_w, room_h, floor_id, building_id, floor_only_id, similar_room = search_and_get_room_info(request_id)
 
         floor_image_path = os.path.join(tmp_directory, f"{floor_id}-map.png")
 
         if not os.path.exists(highlighted_image_path):
             return jsonify({"error": "Room number not found or image could not be created"}), 404
 
+        skyview_image_base64, room_image_base64 = get_suppliment_images(room_id=request_id)
+        
         return_type = request.args.get('returnType', '').lower()
 
-        destinationLabelText = f"{room_id} ?" if similar_room else room_id
+        destinationLabelText = f"{request_id} ?" if similar_room else request_id
         noteText = f"{note_param}" if note_param else ""
 
 
@@ -679,14 +690,14 @@ def view_room_highlighted(room_id):
             # Return image file directly
             return send_file(floor_image_path, mimetype='image/png')
         else:
-            # Return HTML with image embedded and styled
+            # Use the Base64 encoded images in HTML
             html_template = f"""
             <!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Map:{room_id}</title>
+                <title>Map:{request_id}</title>
                 <style>
                     body {{
                         margin: 0;
@@ -712,28 +723,31 @@ def view_room_highlighted(room_id):
                     }}
                     .floor-identifier {{
                         position: absolute;
-                        top: 10px;
-                        left: 10px;
+                        top: 1%;
+                        left: 1%;
                         color: white;
                         background-color: rgba(0, 0, 0, 0.7);
-                        padding: 5px 10px;
+                        padding: 0.5% 1%; 
                         border-radius: 5px;
                         font-family: Arial, sans-serif;
-                        font-size: 14px;
+                        font-size: 2.1vw; 
+                        cursor: pointer;
                     }}
                     .button-container {{
                         position: absolute;
-                        bottom: 10px;
-                        right: 10px;
+                        top: 1%;
+                        right: 5%;
+                        display: flex;
+                        gap: 10%;
+                        z-index: 10; 
                     }}
                     button {{
-                        padding: 10px 15px;
-                        margin: 5px;
-                        font-size: 14px;
+                        padding: 3% 6%; 
+                        font-size: 1.6vw; 
                         border: none;
                         border-radius: 5px;
                         cursor: pointer;
-                        background-color: #007BFF;
+                        background-color: rgba(0, 0, 255, 0.7);
                         color: white;
                     }}
                     button:hover {{
@@ -741,18 +755,19 @@ def view_room_highlighted(room_id):
                     }}
                     .mouse-position {{
                         position: absolute;
-                        bottom: 10px;                        
-                        left: 10px;
+                        bottom: 1%;                        
+                        right: 1%;
                         color: white;
                         background-color: rgba(0, 0, 0, 0.7);
-                        padding: 5px 10px;
+                        padding: 0.5% 1%; 
                         border-radius: 5px;
                         font-family: Arial, sans-serif;
-                        font-size: 14px;
+                        font-size: 1.4vw; 
                     }}
-                    .highlight-box {{
+                    .source-box {{
                         position: absolute;
-                        border: 4px solid red;
+                        border: solid red;
+                        borderWidth: 0.8vw;
                         background-color: rgba(255, 0, 0, 0.1);
                         pointer-events: none;
                         transform: translate(-50%, -50%);
@@ -760,7 +775,8 @@ def view_room_highlighted(room_id):
                     }}
                     .destination-box {{
                         position: absolute;
-                        border: 4px solid red;
+                        border: solid red;
+                        borderWidth: 0.8vw;
                         background-color: rgba(255, 0, 0, 0.1);
                         pointer-events: none;
                         transform: translate(-50%, -50%);
@@ -770,57 +786,62 @@ def view_room_highlighted(room_id):
                         transform: translate(-50%, 0);
                         user-select: none;
                         pointer-events: none;
-
                         position: absolute;
                         color: white;
-                        background-color: rgba(0, 0, 255, 0.6);
-                        padding: 1px 3px;
+                        background-color: rgba(0, 0, 255, 0.7);
+                        padding: 0.1% 0.2%;
                         border-radius: 5px;
                         font-family: Arial, sans-serif;
-                        font-size: 12px;                        
-                    }}                    
+                        font-size: 1.6vw; 
+                    }}                      
                     @keyframes blink {{
-                        0% {{ border-color: green; background-color: rgba(255, 255, 0, 0.05); }}
-                        50% {{ border-color: yellow; background-color: rgba(255, 255, 0, 0.05); }}
-                        100% {{ border-color: green; background-color: rgba(255, 255, 0, 0.05); }}
+                        0% {{ border-color: yellow; background-color: rgba(255, 255, 0, 0.1); }}
+                        50% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                        100% {{ border-color: yellow; background-color: rgba(255, 255, 0, 0.1); }}
                     }}
                 </style>
             </head>
             <body>
-                <div class="button-container">
-                    <button id="toggleSizeButton" onclick="toggleImageSize()">+</button>
-                </div>
                 <div class="image-container">
-                    <img id="floorImage" src="data:image/png;base64,{convert_image_to_base64(floor_image_path)}" alt="Request: {requested_room} ({room_id})" />
-                    <div id="highlightBox" class="highlight-box" style="display: none;"></div>
+                    <img id="floorImage" src="data:image/png;base64,{convert_image_to_base64(floor_image_path)}" alt="Request: {org_request_id} ({request_id})" />
+                    <div id="sourceBox" class="source-box" style="display: none;"></div>
                     <div id="destinationBox" class="destination-box" style="display: none;"></div>
                     <div id="destinationLabel" class="box-label" style="display: none;">{destinationLabelText}</div>
-                    <div id="sourceLabel" class="box-label" style="display: none;">X | Y</div>                    
+                    <div id="sourceLabel" class="box-label" style="display: none;">X / Y</div>
+                    <div class="button-container">
+                        {"<button id='toggleSkyviewButton' onclick='toggleSkyview()'>sky</button>" if skyview_image_base64 else ""}
+                        {"<button id='toggleRoomviewButton' onclick='toggleRoomview()'>room</button>" if room_image_base64 else ""}
+                    </div>
+                    <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%;" />
+                    <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
+                    <div class="floor-identifier">{building_id}동 {floor_only_id}층</div>
+                    <div class="mouse-position" id="mousePosition">X: 0 / Y: 0</div>
                 </div>
-                <div class="floor-identifier">{building_id}동 {floor_only_id}층</div>
-                <div class="mouse-position" id="mousePosition">X: 0 | Y: 0</div>
+            
                 <script>
-                    let isOriginalSize = false;
 
-                    function toggleImageSize() {{
-                        const img = document.getElementById('floorImage');
-                        const button = document.getElementById('toggleSizeButton');
+                    const isFloorRequest = {str(isFloorRequest).lower()};
 
-                        if (isOriginalSize) {{
-                            img.style.maxWidth = "100%";
-                            img.style.maxHeight = "100%";
-                            img.style.width = "auto";
-                            img.style.height = "auto";
-                            button.textContent = "+";
+                    function toggleSkyview() {{
+                        const skyviewImage = document.getElementById('skyviewImage');
+                        const roomviewImage = document.getElementById('roomviewImage');
+                        if (skyviewImage.style.display === 'none') {{
+                            skyviewImage.style.display = 'block';
+                            roomviewImage.style.display = 'none';
                         }} else {{
-                            img.style.maxWidth = "none";
-                            img.style.maxHeight = "none";
-                            img.style.width = "auto";
-                            img.style.height = "auto";
-                            button.textContent = "fit";
+                            skyviewImage.style.display = 'none';
                         }}
+                    }}
 
-                        isOriginalSize = !isOriginalSize;
+                    function toggleRoomview() {{
+                        const roomviewImage = document.getElementById('roomviewImage');
+                        const skyviewImage = document.getElementById('skyviewImage');
+                        if (roomviewImage.style.display === 'none') {{
+                            roomviewImage.style.display = 'block';
+                            skyviewImage.style.display = 'none';
+                        }} else {{
+                            roomviewImage.style.display = 'none';
+                        }}
                     }}
 
                     document.getElementById('floorImage').addEventListener('mousemove', function(event) {{
@@ -830,7 +851,7 @@ def view_room_highlighted(room_id):
                         const y = event.clientY - rect.top;
                         const xPercent = (x / rect.width) * 100;
                         const yPercent = (y / rect.height) * 100;
-                        document.getElementById('mousePosition').textContent = `X: ${{xPercent.toFixed(1)}} | Y: ${{yPercent.toFixed(1)}}`;
+                        document.getElementById('mousePosition').textContent = `X: ${{xPercent.toFixed(1)}} / Y: ${{yPercent.toFixed(1)}}`;
                     }});
 
                     document.getElementById('floorImage').addEventListener('click', function(event) {{
@@ -841,12 +862,12 @@ def view_room_highlighted(room_id):
                         const xPercent = (x / rect.width) * 100;
                         const yPercent = (y / rect.height) * 100;
 
-                        const highlightBox = document.getElementById('highlightBox');
-                        highlightBox.style.left = `${{xPercent}}%`;
-                        highlightBox.style.top = `${{yPercent}}%`;
-                        highlightBox.style.width = '5%';  
-                        highlightBox.style.height = getComputedStyle(highlightBox).width;
-                        highlightBox.style.display = 'block';
+                        const sourceBox = document.getElementById('sourceBox');
+                        sourceBox.style.left = `${{xPercent}}%`;
+                        sourceBox.style.top = `${{yPercent}}%`;
+                        sourceBox.style.width = '5%';  
+                        sourceBox.style.height = getComputedStyle(sourceBox).width;
+                        sourceBox.style.display = 'block';
 
                         const sourceLabel = document.getElementById('sourceLabel');
                         let labelContent = `X: ${{xPercent.toFixed(1)}}<br>Y: ${{yPercent.toFixed(1)}}`;
@@ -876,8 +897,10 @@ def view_room_highlighted(room_id):
 
                         const roomX = {room_x};
                         const roomY = {room_y};
-                        const roomW = {room_w};
-                        const roomH = {room_h};
+                        const roomW = {room_w + 0.1};
+                        const roomH = {room_h + 0.1};
+
+                        console.log('Drawing destination box with coordinates:', roomX, roomY, roomW, roomH); // 콘솔 로그 추가
 
                         destinationBox.style.left = `${{roomX}}%`;
                         destinationBox.style.top = `${{roomY}}%`;
@@ -886,7 +909,7 @@ def view_room_highlighted(room_id):
                         destinationBox.style.display = 'block';
 
                         const destinationLabel = document.getElementById('destinationLabel');
-                        let labelContent = `{requested_room}<br>({destinationLabelText})`;
+                        let labelContent = `{org_request_id}<br>({destinationLabelText})`;
                         destinationLabel.innerHTML = labelContent;
                         destinationLabel.style.left = `${{roomX}}%`;
                         destinationLabel.style.top = `${{roomY + roomH /2 + 1}}%`;
@@ -895,13 +918,13 @@ def view_room_highlighted(room_id):
                     }}
 
                     // Draw the highlight box based on query parameters
-                    function drawHighlightBoxFromQuery(x, y) {{
-                        const highlightBox = document.getElementById('highlightBox');
-                        highlightBox.style.left = `${{x}}%`;
-                        highlightBox.style.top = `${{y}}%`;
-                        highlightBox.style.width = '5%';
-                        highlightBox.style.height = getComputedStyle(highlightBox).width;
-                        highlightBox.style.display = 'block';
+                    function drawsourceBoxFromQuery(x, y) {{
+                        const sourceBox = document.getElementById('sourceBox');
+                        sourceBox.style.left = `${{x}}%`;
+                        sourceBox.style.top = `${{y}}%`;
+                        sourceBox.style.width = '5%';
+                        sourceBox.style.height = getComputedStyle(sourceBox).width;
+                        sourceBox.style.display = 'block';
 
                         const sourceLabel = document.getElementById('sourceLabel');
                         let labelContent = `X: ${{x.toFixed(1)}}<br>Y: ${{y.toFixed(1)}}`;
@@ -915,13 +938,110 @@ def view_room_highlighted(room_id):
                         sourceLabel.style.backgroundColor = 'rgba(128, 0, 128, 0.6)';
                     }}
 
-                    // Call the function to draw the destination box when the image is loaded
-                    document.getElementById('floorImage').addEventListener('load', function() {{
-                        drawDestinationBox();
+                    function initialize() {{
+                        console.log('Initializing...');
+                        if (!isFloorRequest) {{
+                            drawDestinationBox();
+                        }}
+
                         const xParam = {x_param};
                         const yParam = {y_param};
                         if (xParam && yParam) {{
-                            drawHighlightBoxFromQuery(xParam, yParam);
+                            drawsourceBoxFromQuery(xParam, yParam);
+                        }}
+                    }}                
+
+                    function updateBoxSize() {{
+                        const sourceBox = document.getElementById('sourceBox');
+                        
+                        const sourceLabel = document.getElementById('sourceLabel');
+                        const floorIdentifier = document.querySelector('.floor-identifier');
+                        const mousePosition = document.querySelector('.mouse-position');
+                        const toggleSkyviewButton = document.getElementById('toggleSkyviewButton');
+                        const toggleRoomviewButton = document.getElementById('toggleRoomviewButton');
+
+                        const boxSize = 5;
+                        const fontSize = 1.6;
+                        const padding = 0.5;
+                        const borderThickness = 0.4;
+
+                        sourceBox.style.width = `${{boxSize}}%`;
+                        sourceBox.style.height = getComputedStyle(sourceBox).width;
+                        sourceBox.style.borderWidth = `${{borderThickness}}vw`;
+                        
+                        floorIdentifier.style.fontSize = `${{fontSize + 0.5}}vw`;
+                        floorIdentifier.style.padding = `${{padding}}% 1%`;
+                        mousePosition.style.fontSize = `${{fontSize - 0.2}}vw`;
+                        sourceLabel.style.fontSize = `${{fontSize}}vw`;
+                        sourceLabel.style.padding = `${{padding}}% 1%`;
+                        
+                        if (!isFloorRequest) {{
+                            const destinationBox = document.getElementById('destinationBox');
+                            const destinationLabel = document.getElementById('destinationLabel');
+                            destinationBox.style.borderWidth = `${{borderThickness}}vw`;
+                            destinationLabel.style.fontSize = `${{fontSize}}vw`;
+                            destinationLabel.style.padding = `${{padding}}% 1%`;                        
+                        }}
+
+                        if (toggleSkyviewButton) {{
+                            toggleSkyviewButton.style.fontSize = `${{fontSize}}vw`;
+                            toggleSkyviewButton.style.padding = `${{padding}}% 2%`;
+                        }}
+
+                        if (toggleRoomviewButton) {{
+                            toggleRoomviewButton.style.fontSize = `${{fontSize}}vw`;
+                            toggleRoomviewButton.style.padding = `${{padding}}% 2%`;
+                        }}
+
+                    }}
+
+                    // Call the function to draw the destination box when the image is loaded
+                    document.addEventListener('DOMContentLoaded', function() {{
+                        console.log('Document loaded');
+                        const floorImage = document.getElementById('floorImage');
+                        if (floorImage.complete) {{
+                            console.log('Floor image already loaded');
+                            initialize();
+                        }} else {{
+                            floorImage.addEventListener('load', function() {{
+                                console.log('Floor image loaded');
+                                initialize();
+                            }});
+                        }}
+                    }});
+
+                    window.addEventListener('resize', updateBoxSize);
+
+                    // Add event listeners for floorIdentifier
+                    const floorIdentifier = document.querySelector('.floor-identifier');
+                    floorIdentifier.addEventListener('mouseover', function() {{
+                        floorIdentifier.textContent = 'Copy URL';
+                    }});
+
+                    floorIdentifier.addEventListener('mouseout', function() {{
+                        floorIdentifier.textContent = '{building_id}동 {floor_only_id}층';
+                    }});
+
+                    floorIdentifier.addEventListener('click', function() {{
+                        const url = decodeURIComponent(window.location.href);
+                        if (navigator.clipboard) {{
+                            navigator.clipboard.writeText(url).then(function() {{
+                                alert(`Copied following URL to clipboard.\\n\\n${{url}}`);
+                            }}, function(err) {{
+                                console.error('Could not copy text: ', err);
+                            }});
+                        }} else {{
+                            const textArea = document.createElement('textarea');
+                            textArea.value = url;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            try {{
+                                document.execCommand('copy');
+                                alert(`Copied following URL to clipboard.\\n\\n${{url}}`);
+                            }} catch (err) {{
+                                console.error('Could not copy text: ', err);
+                            }}
+                            document.body.removeChild(textArea);
                         }}
                     }});
 
@@ -981,6 +1101,30 @@ def search_and_get_room_info(room_id):
         return room_id, image.size, room_x, room_y, room_w, room_h, floor_id, building_id, floor_only_id, similar_room
     else:
         return None, None, None, None, None, None, None, None, None, False
+
+def get_suppliment_images(building_id=None, room_id=None):
+    """
+    Function to get skyview_image and room_image based on building_id or room_id.
+    :param building_id: The building ID to find the skyview image.
+    :param room_id: The room ID to find the room image.
+    :return: Tuple containing the Base64 encoded skyview_image and room_image, or None if not found.
+    """
+    skyview_image_base64 = None
+    room_image_base64 = None
+
+    if room_id:
+        building_id = room_id.split('-')[0]
+        
+    skyview_image_path = os.path.join("image/skyview", f"{building_id}.jpg")
+    if os.path.exists(skyview_image_path):
+        skyview_image_base64 = convert_image_to_base64(skyview_image_path)
+
+    if room_id:
+        room_image_path = os.path.join("image/room", f"{room_id}.jpg")
+        if os.path.exists(room_image_path):
+            room_image_base64 = convert_image_to_base64(room_image_path)
+
+    return skyview_image_base64, room_image_base64
 
 def search_and_highlight(room_id, force=False):
     """
