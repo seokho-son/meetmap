@@ -43,79 +43,72 @@
     },        
     "5-양식당": {
         "floor": "5-L",
-        "x_ratio": 600,
-        "y_ratio": 900,
-        "w_ratio": 300,
-        "h_ratio": 200
+        "x_ratio": 35.8,
+        "y_ratio": 73.6,
+        "w_ratio": 20,
+        "h_ratio": 10
     },  
     "5-분식당": {
         "floor": "5-L",
-        "x_ratio": 200,
-        "y_ratio": 600,
-        "w_ratio": 200,
-        "h_ratio": 400
+        "x_ratio": 23.3,
+        "y_ratio": 50.1,
+        "w_ratio": 10,
+        "h_ratio": 20
     },    
     "5-카페": {
         "floor": "5-L",
-        "x_ratio": 1250,
-        "y_ratio": 850,
-        "w_ratio": 180,
-        "h_ratio": 300
+        "x_ratio": 77.2,
+        "y_ratio": 69.3,
+        "w_ratio": 7,
+        "h_ratio": 9
     },       
     "5-매점": {
         "floor": "5-L",
-        "x_ratio": 1250,
-        "y_ratio": 650,
-        "w_ratio": 180,
-        "h_ratio": 70
+        "x_ratio": 77.2,
+        "y_ratio": 49.4,
+        "w_ratio": 8,
+        "h_ratio": 6
     },
     "13-에트리홀딩스": {
         "floor": "13-3",
-        "x_ratio": 1350,
-        "y_ratio": 1147,
-        "w_ratio": 160,
-        "h_ratio": 36
+        "x_ratio": 61.7,
+        "y_ratio": 83.2,
+        "w_ratio": 10,
+        "h_ratio": 6
     },     
     "7-도서관1": {
         "floor": "7-1",
-        "x_ratio": 500,
-        "y_ratio": 300,
-        "w_ratio": 160,
-        "h_ratio": 150
+        "x_ratio": 43.8,
+        "y_ratio": 24.7,
+        "w_ratio": 10,
+        "h_ratio": 6
     },      
     "7-도서관2": {
         "floor": "7-2",
-        "x_ratio": 530,
-        "y_ratio": 210,
-        "w_ratio": 290,
-        "h_ratio": 240
+        "x_ratio": 50.3,
+        "y_ratio": 23.7,
+        "w_ratio": 10,
+        "h_ratio": 6
     },   
     "4-광RF실험실": {
         "floor": "4-G",
-        "x_ratio": 700,
-        "y_ratio": 350,
-        "w_ratio": 300,
-        "h_ratio": 150
+        "x_ratio": 66.1,
+        "y_ratio": 30.6,
+        "w_ratio": 12,
+        "h_ratio": 6
     },     
     "4-실리콘실험실": {
         "floor": "4-G",
-        "x_ratio": 700,
-        "y_ratio": 1000,
-        "w_ratio": 300,
-        "h_ratio": 150
+        "x_ratio": 66.9,
+        "y_ratio": 76.5,
+        "w_ratio": 12,
+        "h_ratio": 6
     },               
     "9-방문접수대": {
         "floor": "9-1",
-        "x_ratio": 120,
-        "y_ratio": 600,
-        "w_ratio": 190,
-        "h_ratio": 100
-    },          
-    "2-202": {
-        "floor": "2-2",
-        "x_ratio": 1005,
-        "y_ratio": 985,
-        "w_ratio": 99,
-        "h_ratio": 50
+        "x_ratio": 12.6,
+        "y_ratio": 48.5,
+        "w_ratio": 12,
+        "h_ratio": 6
     }
 }
