@@ -1,0 +1,132 @@
+{
+    "1": {
+        "building_name": "행정동",
+        "north_x": 50,
+        "north_y": 97,
+        "main_gate_x": 50,
+        "main_gate_y": 93
+    }, 
+    "2": {
+        "north_x": 50,
+        "north_y": 97,
+        "main_gate_x": 5,
+        "main_gate_y": 50
+    },
+    "2-B": {
+        "north_x": 50,
+        "north_y": 97,
+        "main_gate_x": 7,
+        "main_gate_y": 50
+    }, 
+    "3": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 94,
+        "main_gate_y": 50.5
+    }, 
+    "4": {
+        "north_x": 3,
+        "north_y": 50,
+        "main_gate_x": 91,
+        "main_gate_y": 8
+    },
+    "5": {
+        "building_name": "식당동(5동)",
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 92.7,
+        "main_gate_y": 50.2
+    },
+    "6": {
+        "north_x": 50,
+        "north_y": 97,
+        "main_gate_x": 50,
+        "main_gate_y": 92
+    },
+    "7": {
+        "north_x": 97,
+        "north_y": 50,
+        "main_gate_x": 50,
+        "main_gate_y": 67
+    },
+    "8": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 50,
+        "main_gate_y": 70.4
+    },
+    "8-B": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 9,
+        "main_gate_y": 81.6
+    },
+    "9": {
+        "building_name": "방문동(9동)",
+        "north_x": 50,
+        "north_y": 97,
+        "main_gate_x": 30,
+        "main_gate_y": 27.2
+    },
+    "10": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 65,
+        "main_gate_y": 80.5
+    },
+    "10-2": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 74.3,
+        "main_gate_y": 88.7
+    },
+    "10-3": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 80.1,
+        "main_gate_y": 84.4
+    },
+    "11": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 50.7,
+        "main_gate_y": 13
+    },
+    "12": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 34,
+        "main_gate_y": 90
+    },
+    "13": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 37,
+        "main_gate_y": 6.6
+    },
+    "13-B": {
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 30,
+        "main_gate_y": 3
+    },
+    "901": {
+        "building_name": "동력동",
+        "north_x": 50,
+        "north_y": 3
+    },
+    "902": {
+        "building_name": "드론시험동",
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 80,
+        "main_gate_y": 3
+    },
+    "903": {
+        "building_name": "체육동",
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 7,
+        "main_gate_y": 38.4
+    }                                          
+}

@@ -69,25 +69,74 @@ def load_json_file(file_path):
     # Return an empty dictionary if all attempts fail
     return {}
 
-# Load alias.json once at the start of the program
+# Load map-alias.json once at the start of the program
 def load_alias_data():
     """
-    Loads alias data from alias.json, handling different encodings.
+    Loads alias data from map-alias.json, handling different encodings.
     :return: Parsed alias data as a dictionary, or an empty dictionary if loading fails.
     """
-    alias_file = 'alias.json'  # Define the file path
+    alias_file = 'map-alias.json'  # Define the file path
     if not os.path.exists(alias_file):
-        print("alias.json file not found.")
+        print("map-alias.json file not found.")
         return {}
     
     alias_data = load_json_file(alias_file)  # Use the helper function
     if alias_data:
         return alias_data
     else:
-        print("Failed to load alias.json or file is empty.")
+        print("Failed to load map-alias.json or file is empty.")
         return {}
 
 alias_data = load_alias_data()
+
+# Load map-note.json once at the start of the program
+def load_note_data():
+    """
+    Loads note data from map-note.json, handling different encodings.
+    :return: Parsed note data as a dictionary, or an empty dictionary if loading fails.
+    """
+    note_file = 'map-note.json'  # Define the file path
+    if not os.path.exists(note_file):
+        print("map-note.json file not found.")
+        return {}
+    
+    note_data = load_json_file(note_file)  # Use the helper function
+    if note_data:
+        return note_data
+    else:
+        print("Failed to load map-note.json or file is empty.")
+        return {}
+
+note_data = load_note_data()
+
+def get_note_data(request_id, floor_id, building_id):
+    """
+    Retrieves the note data matching the given IDs.
+    :param request_id: The request ID to search for.
+    :param floor_id: The floor ID to search for.
+    :param building_id: The building ID to search for.
+    :return: The matching note data as a dictionary, or None if no match is found.
+    """
+    note_data = load_note_data()  # Load the latest note data
+
+    if not note_data:
+        return None
+
+    # Check for exact match with request_id
+    if request_id and request_id in note_data:
+        return note_data[request_id]
+
+    # Check for match with floor_id
+    if floor_id and floor_id in note_data:
+        return note_data[floor_id]
+
+    # Check for match with building_id
+    if building_id and building_id in note_data:
+        return note_data[building_id]
+
+    # No match found
+    return None
+
 
 # Function to analyze an image and extract room number information
 def analyze_image(image_path, image_name):
@@ -192,28 +241,33 @@ def analyze_image(image_path, image_name):
 
                         # Adjust width for the start value and store
                         data['width'][i] = half_width
-                        store_room_data(start.strip(), data, i, analyzed_results, image_name)
+                        store_room_data(start.strip(), data, i, analyzed_results, image_name, resized_image.size)
 
                         # Adjust left and width for the end value and store
                         data['left'][i] = original_left + half_width
                         data['width'][i] = half_width
-                        store_room_data(end.strip(), data, i, analyzed_results, image_name)
+                        store_room_data(end.strip(), data, i, analyzed_results, image_name, resized_image.size)
                     elif ',' in match[0]:
                         # Split at ',' and save each part
                         split_patterns = match[0].split(',')
                         for room in split_patterns:
-                            store_room_data(room.strip(), data, i, analyzed_results, image_name)
+                            store_room_data(room.strip(), data, i, analyzed_results, image_name, resized_image.size)
                     elif '-' in match[0] and len(match[0].split('-')[0]) == len(match[0].split('-')[1]):
                         # Split at '-' and save both parts if they have the same length
                         start, end = match[0].split('-')
-                        store_room_data(start.strip(), data, i, analyzed_results, image_name)
-                        store_room_data(end.strip(), data, i, analyzed_results, image_name)        
+                        store_room_data(start.strip(), data, i, analyzed_results, image_name, resized_image.size)
+                        store_room_data(end.strip(), data, i, analyzed_results, image_name, resized_image.size)
                     else:
-                        store_room_data(match[0], data, i, analyzed_results, image_name)
+                        store_room_data(match[0], data, i, analyzed_results, image_name, resized_image.size)
 
     for text, coords in analyzed_results.items():
-        draw.rectangle(((coords["x"], coords["y"]), (coords["x"] + coords["w"], coords["y"] + coords["h"])), outline="red")
-        # draw.text((coords["x"], coords["y"] + coords["h"]), text, fill="green", font=font)
+        # Convert ratios back to pixel values
+        x = int(coords["x_ratio"] / 100 * resized_image.size[0])
+        y = int(coords["y_ratio"] / 100 * resized_image.size[1])
+        w = int(coords["w_ratio"] / 100 * resized_image.size[0])
+        h = int(coords["h_ratio"] / 100 * resized_image.size[1])
+        print(f"- {text}: Location: X: {x}, Y: {y}, Width: {w}, Height: {h}")
+        draw.rectangle(((x, y), (x + w, y + h)), outline="red")
 
     # Saving the final image with highlighted text
     resized_image.save(os.path.join(tmp_directory, f'{image_name}-7-highlighted_image.png'))
@@ -221,26 +275,44 @@ def analyze_image(image_path, image_name):
 
 
 # Function to store data about a room
-def store_room_data(room_number, data, index, analyzed_results, image_name):
+def store_room_data(room_id, data, index, analyzed_results, image_name, image_size):
     """
     Stores the room number data along with its coordinates.
-    :param room_number: The identified room number from the image.
+    :param room_id: The identified room number from the image.
     :param data: The data dictionary obtained from pytesseract OCR.
     :param index: The current index in the OCR data list.
     :param analyzed_results: The dictionary where results are being stored.
     :param image_name: The name of the image being analyzed, used for labeling.
+    :param image_size: The size of the image (width, height).
     """
-    # Replace the first character of room_number with image_name for unique identification
-    room_number = image_name + room_number[1:]
+    # Replace the first character of room_id with image_name for unique identification
+    room_id = image_name + room_id[1:]
 
     # Extract coordinates and dimensions of the detected text
     (x, y, width, height) = (data['left'][index], data['top'][index], data['width'][index], data['height'][index])
-    print(f"- {room_number}: Location: X: {x}, Y: {y}, Width: {width}, Height: {height}")
-    
+    print(f"- {room_id}: Location: X: {x}, Y: {y}, Width: {width}, Height: {height}")
+
+    # Convert coordinates and dimensions to ratios based on image size
+    image_width, image_height = image_size
+    width_ratio = width / image_width * 100
+    height_ratio = height / image_height * 100
+
+    x_ratio = (x / image_width * 100) + (width_ratio / 2)  # Center X coordinate
+    y_ratio = (y / image_height * 100) + (height_ratio / 2)  # Center Y coordinate
+
     # Store the room information in the analyzed_results dictionary
-    analyzed_results[room_number] = {
-        "floor": image_name, "x": x, "y": y, "w": width, "h": height
+    analyzed_results[room_id] = {
+        "floor": image_name, "x_ratio": x_ratio, "y_ratio": y_ratio, "w_ratio": width_ratio, "h_ratio": height_ratio
     }
+
+def split_floor_id(floor):
+    """
+    Splits the floor identifier into building_id and floor_only_id.
+    :param floor: The floor identifier in the format 'building-floor'.
+    :return: A tuple containing building_id and floor_only_id.
+    """
+    building_id, floor_only_id = floor.split("-", 1)
+    return building_id, floor_only_id
 
 def save_results_to_json(analyzed_results, json_file='map.json'):
     """
@@ -402,10 +474,10 @@ def draw_label(draw, message, position, font_size=30, fill="yellow"):
     # Draw the text on top of the rectangle
     draw.text((x, y), message, fill=fill, font=font)
 
-def calculate_room_similarity(requested_room, available_rooms):
+def calculate_room_similarity(org_request_id, available_rooms):
     """
     Calculate similarity score between the requested room and available rooms.
-    :param requested_room: The requested room number as a string.
+    :param org_request_id: The requested room number as a string.
     :param available_rooms: List of available room numbers as strings.
     :return: The most similar room number.
     """
@@ -432,7 +504,7 @@ def calculate_room_similarity(requested_room, available_rooms):
 
         return score
 
-    similarities = [(room, similarity_score(requested_room, room)) for room in available_rooms]
+    similarities = [(room, similarity_score(org_request_id, room)) for room in available_rooms]
     return max(similarities, key=lambda x: x[1])[0] if similarities else None
 
 
@@ -479,18 +551,18 @@ def sort_key(name):
     return (first_part, second_part)
 
 @app.route('/room', methods=['GET'])
-def list_room_numbers():
+def list_room_ids():
     """
     List all available room numbers.
     :return: JSON response with a list of all room numbers.
     """
     analyzed_results = load_results_from_json()
-    sorted_room_numbers = sorted(analyzed_results.keys(), key=sort_key)
-    print(f"Total Room Numbers: {len(sorted_room_numbers)}")
-    print(sorted_room_numbers)
+    sorted_room_ids = sorted(analyzed_results.keys(), key=sort_key)
+    print(f"Total Room Numbers: {len(sorted_room_ids)}")
+    print(sorted_room_ids)
     response = {
-        "Total room numbers": len(sorted_room_numbers),
-        "All identified Rooms": sorted_room_numbers
+        "Total room numbers": len(sorted_room_ids),
+        "All identified Rooms": sorted_room_ids
     }
     return Response(
         json.dumps(response, ensure_ascii=False),  # Ensure UTF-8 encoding
@@ -502,7 +574,7 @@ def list_room_numbers():
 @app.route('/alias', methods=['GET'])
 def get_alias():
     """
-    Reload alias.json and return the updated list.
+    Reload map-alias.json and return the updated list.
     """
     global alias_data
     try:
@@ -510,9 +582,9 @@ def get_alias():
         response = json.dumps(alias_data, ensure_ascii=False)
         return Response(response, content_type='application/json; charset=utf-8')
     except FileNotFoundError:
-        return jsonify({"error": "alias.json file not found."}), 404
+        return jsonify({"error": "map-alias.json file not found."}), 404
     except json.JSONDecodeError:
-        return jsonify({"error": "Error decoding alias.json file."}), 500
+        return jsonify({"error": "Error decoding map-alias.json file."}), 500
     except Exception as e:
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
     
@@ -524,10 +596,10 @@ def get_alias():
 #     """
 #     analyzed_results = load_results_from_json()
 #     data = request.json
-#     room_number = data.get('room_number')
+#     room_id = data.get('room_id')
 
-#     if room_number and room_number not in analyzed_results:
-#         analyzed_results[room_number] = data
+#     if room_id and room_id not in analyzed_results:
+#         analyzed_results[room_id] = data
 #         save_results_to_json(analyzed_results)
 #         return jsonify({"message": "Room added"}), 201
 #     else:
@@ -561,63 +633,83 @@ def is_number_in_range(num_str, range_str):
     expanded_range = expand_range(range_str)
     return num_str in expanded_range
 
-@app.route('/room/<room_number>', methods=['GET'])
-@app.route('/view/<room_number>', methods=['GET'])
-@app.route('/find/<room_number>', methods=['GET'])
-@app.route('/dir/<room_number>', methods=['GET'])
-@app.route('/r/<room_number>', methods=['GET'])
-@app.route('/v/<room_number>', methods=['GET'])
-@app.route('/f/<room_number>', methods=['GET'])
-@app.route('/d/<room_number>', methods=['GET'])
-def view_room_highlighted(room_number):
+@app.route('/room/<request_id>', methods=['GET'])
+@app.route('/view/<request_id>', methods=['GET'])
+@app.route('/find/<request_id>', methods=['GET'])
+@app.route('/dir/<request_id>', methods=['GET'])
+@app.route('/r/<request_id>', methods=['GET'])
+@app.route('/v/<request_id>', methods=['GET'])
+@app.route('/f/<request_id>', methods=['GET'])
+@app.route('/d/<request_id>', methods=['GET'])
+def view_room_highlighted(request_id):
     """
     View an image with a specific room number highlighted.
     This endpoint sends an image with the specified room number highlighted, indicating its location.
-    :param room_number: The room number to be highlighted in the image.
+    :param request_id: The room number to be highlighted in the image.
     :return: HTML response with the image or file response based on returnType parameter.
     """
 
     try:
-        # Replace multiple consecutive "-" with a single "-"
-        room_number = re.sub(r'-+', '-', room_number)
+        x_param = request.args.get('x')
+        y_param = request.args.get('y')
+        note_param = request.args.get('note')
 
-        # Normalize room_number by removing spaces
-        normalized_room_number = room_number.replace(" ", "")
+        org_request_id = request_id
+        # Replace multiple consecutive "-" with a single "-"
+        request_id = re.sub(r'-+', '-', request_id)
+
+        # Normalize request_id by removing spaces
+        normalized_request_id = request_id.replace(" ", "")
         
         global alias_data
         alias_data = load_alias_data()
-
-        # Check alias_data for a matching key
-        for alias, replacement in alias_data.items():
-            normalized_alias = alias.replace(" ", "")
-            # print(f"Normalized Alias: {normalized_alias}")
-            if normalized_alias in normalized_room_number:
-                room_number = re.sub(re.escape(normalized_alias), replacement, normalized_room_number, flags=re.IGNORECASE)
-                break    
-    
-        # Define the patterns to be replaced
-        patterns_to_replace = [" 동 ", "동-", "동 ", " 동", "동", " - ", "- ", " -", " "]
-        
-        # Replace the patterns with "-"
-        for pattern in patterns_to_replace:
-            room_number = room_number.replace(pattern, "-")
-        
-        # Remove "호" from the room number
-        room_number = room_number.replace("호", "")
-
-        # Replace multiple consecutive "-" with a single "-"
-        room_number = re.sub(r'-+', '-', room_number)
-
-        room_number = room_number.upper()
-
-        print(f"Requested Room Number: {room_number}")
-
         analyzed_results = load_results_from_json()
 
-        # Check if room_number starts with any of the image names or if it exists in analyzed_results
-        if room_number not in analyzed_results and not any(room_number.startswith(name.upper()) for name in image_names):
+        # Check alias_data for a matching key
+        aliasReplacement = ""
+        if request_id not in analyzed_results:
+            for alias, replacement in alias_data.items():
+                normalized_alias = alias.replace(" ", "")
+                # print(f"Normalized Alias: {normalized_alias}")
+                if normalized_alias in normalized_request_id:
+                    aliasReplacement = replacement
+                    request_id = re.sub(re.escape(normalized_alias), replacement, normalized_request_id, flags=re.IGNORECASE)
+                    break    
+
+        # Replace multiple consecutive "-" with a single "-"
+        request_id = re.sub(r'-+', '-', request_id)
+        
+        # Replace the patterns with "-" only if aliasReplacement is empty and request_id is not in analyzed_results
+        if request_id not in analyzed_results:
+            # Define the patterns to be replaced
+            patterns_to_replace = ["동"]
+            if aliasReplacement == "" :
+                for pattern in patterns_to_replace:
+                    request_id = request_id.replace(pattern, "-")
+                if request_id.endswith("호") or request_id.endswith("층"):
+                    request_id = request_id[:-1]                
+            else:
+                # If aliasReplacement is not empty, check and remove the last "호" from request_id if necessary
+                if not (aliasReplacement.endswith("호") or aliasReplacement.endswith("층")) and (request_id.endswith("호") or request_id.endswith("층")):
+                    request_id = request_id[:-1]
+
+
+        
+        # Replace multiple consecutive "-" with a single "-"
+        request_id = re.sub(r'-+', '-', request_id)
+
+        request_id = request_id.upper()
+
+        isFloorRequest = False
+        if request_id in image_names:
+            isFloorRequest = True
+
+        print(f"Original Request: {org_request_id} Adjusted Request: {request_id} (isFloorRequest: {isFloorRequest})") 
+
+        # Check if request_id starts with any of the image names or if it exists in analyzed_results
+        if request_id not in analyzed_results and not any(request_id.startswith(name.upper()) for name in image_names):
             response = {
-                "Message": f"Map for {room_number} is not supported yet.",
+                "Message": f"Map for {request_id} is not supported yet.",
                 "Supported Maps": sorted(image_names, key=sort_key)
             }
             return Response(
@@ -625,26 +717,50 @@ def view_room_highlighted(room_number):
                 content_type="application/json; charset=utf-8",
                 status=404
             )
-        force = request.args.get('force', '').lower() == 'true'
-        highlighted_image_path = view_room_highlighted_logic(room_number, force)
 
-        if not os.path.exists(highlighted_image_path):
-            return jsonify({"error": "Room number not found or image could not be created"}), 404
+        request_id, image_size, room_x, room_y, room_w, room_h, floor_id, building_id, floor_only_id, similar_room = search_and_get_room_info(request_id)
 
+        if isFloorRequest:
+            floor_id = request_id
+            building_id, floor_only_id = split_floor_id(floor_id)
+
+        print(f"floor_id: {floor_id}, building_id: {building_id}, floor_only_id: {floor_only_id}")
+        floor_image_path = os.path.join(tmp_directory, f"{floor_id}-map.png")
+
+        skyview_image_base64, room_image_base64 = get_suppliment_images(room_id=request_id)
+
+        matched_note_data = get_note_data(request_id, floor_id, building_id)
+        # if matched_note_data:
+        #     print("Matched Note Data:", matched_note_data)
+        # else:
+        #     print("No matching note data found.")
+
+        b_name = matched_note_data.get('building_name') if matched_note_data and matched_note_data.get('building_name') else None
+        b_north_x = matched_note_data.get('north_x') if matched_note_data and matched_note_data.get('north_x') else None
+        b_north_y = matched_note_data.get('north_y') if matched_note_data and matched_note_data.get('north_y') else None
+        b_main_gate_x = matched_note_data.get('main_gate_x') if matched_note_data and matched_note_data.get('main_gate_x') else None
+        b_main_gate_y = matched_note_data.get('main_gate_y') if matched_note_data and matched_note_data.get('main_gate_y') else None
+        b_note = matched_note_data.get('note') if matched_note_data and matched_note_data.get('note') else None
+        
         return_type = request.args.get('returnType', '').lower()
+
+        destinationLabelText = f"{request_id} ?" if similar_room else request_id
+        buildingText = f"{b_name}" if b_name else f"{building_id}동" 
+        noteText = f"{note_param}" if note_param else ""
+
 
         if return_type == "file":
             # Return image file directly
-            return send_file(highlighted_image_path, mimetype='image/png')
+            return send_file(floor_image_path, mimetype='image/png')
         else:
-            # Return HTML with image embedded and styled
+            # Use the Base64 encoded images in HTML
             html_template = f"""
             <!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Find Room: {room_number}</title>
+                <title>Map:{request_id}</title>
                 <style>
                     body {{
                         margin: 0;
@@ -656,72 +772,388 @@ def view_room_highlighted(room_number):
                         position: relative;
                         flex-direction: column;
                     }}
+                    .image-container {{
+                        position: relative;
+                        max-width: 100%;
+                        max-height: 100%;
+                        overflow: hidden;
+                    }}
                     img {{
                         max-width: 100%;
                         max-height: 100%;
                         object-fit: contain;
                         transition: all 0.3s ease-in-out;
                     }}
-                    .room-number {{
+                    .floor-identifier {{
                         position: absolute;
-                        bottom: 10px;
-                        left: 10px;
+                        top: 1%;
+                        left: 1%;
                         color: white;
                         background-color: rgba(0, 0, 0, 0.7);
-                        padding: 5px 10px;
-                        border-radius: 5px;
+                        padding: 0.5% 1%; 
+                        border-radius: 0.5vw;
                         font-family: Arial, sans-serif;
-                        font-size: 14px;
+                        font-size: 2.1vw; 
+                        cursor: pointer;
                     }}
                     .button-container {{
                         position: absolute;
-                        bottom: 10px;
-                        right: 10px;
+                        top: 1%;
+                        right: 5%;
+                        display: flex;
+                        gap: 10%;
+                        z-index: 10; 
                     }}
                     button {{
-                        padding: 10px 15px;
-                        margin: 5px;
-                        font-size: 14px;
+                        padding: 3% 6%; 
+                        font-size: 1.6vw; 
                         border: none;
-                        border-radius: 5px;
+                        border-radius: 0.5vw;
                         cursor: pointer;
-                        background-color: #007BFF;
+                        background-color: rgba(0, 0, 255, 0.7);
                         color: white;
                     }}
                     button:hover {{
                         background-color: #0056b3;
                     }}
+                    .mouse-position {{
+                        position: absolute;
+                        bottom: 1%;                        
+                        right: 1%;
+                        color: white;
+                        background-color: rgba(0, 0, 0, 0.7);
+                        padding: 0.5% 1%; 
+                        border-radius: 0.5vw;
+                        font-family: Arial, sans-serif;
+                        font-size: 1.4vw; 
+                    }}
+                    .source-box {{
+                        position: absolute;
+                        border: solid red;
+                        borderWidth: 0.8vw;
+                        background-color: rgba(255, 0, 0, 0.1);
+                        pointer-events: none;
+                        transform: translate(-50%, -50%);
+                        animation: blink1 3s infinite;
+                    }}
+                    .destination-box {{
+                        position: absolute;
+                        border: solid red;
+                        borderWidth: 0.8vw;
+                        background-color: rgba(255, 0, 0, 0.1);
+                        pointer-events: none;
+                        transform: translate(-50%, -50%);
+                        animation: blink2 3s infinite;
+                    }}
+                    .box-label {{
+                        transform: translate(-50%, 0);
+                        user-select: none;
+                        pointer-events: none;
+                        position: absolute;
+                        color: white;
+                        background-color: rgba(0, 0, 255, 0.7);
+                        padding: 0.1% 0.2%;
+                        border-radius: 0.5vw;
+                        font-family: Arial, sans-serif;
+                        font-size: 1.6vw; 
+                    }}                      
+                    .gate-label {{
+                        transform: translate(-50%, -50%);
+                        user-select: none;
+                        pointer-events: none;
+                        position: absolute;
+                        color: white;
+                        background-color: rgba(0, 0, 0, 0.5);
+                        padding: 0.2% 0.4%; 
+                        border-radius: 0.7vw;
+                        font-family: Arial, sans-serif;
+                        font-size: 1.4vw; 
+                        animation: blink3 8s infinite;
+                    }}                                          
+                    @keyframes blink1 {{
+                        0% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                        50% {{ border-color: red; background-color: rgba(255, 255, 0, 0.2); }}
+                        100% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                    }}
+                    @keyframes blink2 {{
+                        0% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                        50% {{ border-color: red; background-color: rgba(255, 255, 0, 0.2); }}
+                        100% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                    }}  
+                    @keyframes blink3 {{
+                        0% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
+                        50% {{ background-color: rgba(0, 0, 0, 0.1); color: rgba(255, 255, 255, 0.1); }}
+                        100% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
+                    }}                        
                 </style>
             </head>
             <body>
-                <div class="button-container">
-                    <button id="toggleSizeButton" onclick="toggleImageSize()">+</button>
+                <div class="image-container">
+                    <img id="floorImage" src="data:image/png;base64,{convert_image_to_base64(floor_image_path)}" alt="Request: {org_request_id} ({request_id})" />
+                    <div id="northLabel" class="gate-label" style="display: none;">북쪽</div>
+                    <div id="mainGateLabel" class="gate-label" style="display: none;">주출입구방향</div>                                      
+                    <div id="sourceBox" class="source-box" style="display: none;"></div>
+                    <div id="destinationBox" class="destination-box" style="display: none;"></div>
+                    <div id="destinationLabel" class="box-label" style="display: none;">{destinationLabelText}</div>
+                    <div id="sourceLabel" class="box-label" style="display: none;">X / Y</div>
+                    <div class="button-container">
+                        {"<button id='toggleSkyviewButton' onclick='toggleSkyview()'>sky</button>" if skyview_image_base64 else ""}
+                        {"<button id='toggleRoomviewButton' onclick='toggleRoomview()'>room</button>" if room_image_base64 else ""}
+                    </div>
+                    <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%;" />
+                    <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
+                    <div class="floor-identifier">{buildingText} {floor_only_id}층</div>
+                    <div class="mouse-position" id="mousePosition">X: 0 / Y: 0</div>
                 </div>
-                <img id="highlightedImage" src="data:image/png;base64,{convert_image_to_base64(highlighted_image_path)}" alt="Highlighted Room: {room_number}">
-                <div class="room-number">Requested Room: {room_number}</div>
+            
                 <script>
-                    let isOriginalSize = false;
 
-                    function toggleImageSize() {{
-                        const img = document.getElementById('highlightedImage');
-                        const button = document.getElementById('toggleSizeButton');
+                    const isFloorRequest = {str(isFloorRequest).lower()};
+                    const bNorthX = {b_north_x if b_north_x else 'null'};
+                    const bNorthY = {b_north_y if b_north_y else 'null'};
+                    const bMainGateX = {b_main_gate_x if b_main_gate_x else 'null'};
+                    const bMainGateY = {b_main_gate_y if b_main_gate_y else 'null'};
+                    const xParam = {x_param if x_param is not None else 'null'};
+                    const yParam = {y_param if y_param is not None else 'null'};
 
-                        if (isOriginalSize) {{
-                            img.style.maxWidth = "100%";
-                            img.style.maxHeight = "100%";
-                            img.style.width = "auto";
-                            img.style.height = "auto";
-                            button.textContent = "+";
+                    function toggleSkyview() {{
+                        const skyviewImage = document.getElementById('skyviewImage');
+                        const roomviewImage = document.getElementById('roomviewImage');
+                        if (skyviewImage.style.display === 'none') {{
+                            skyviewImage.style.display = 'block';
+                            roomviewImage.style.display = 'none';
                         }} else {{
-                            img.style.maxWidth = "none";
-                            img.style.maxHeight = "none";
-                            img.style.width = "auto";
-                            img.style.height = "auto";
-                            button.textContent = "fit";
+                            skyviewImage.style.display = 'none';
+                        }}
+                    }}
+
+                    function toggleRoomview() {{
+                        const roomviewImage = document.getElementById('roomviewImage');
+                        const skyviewImage = document.getElementById('skyviewImage');
+                        if (roomviewImage.style.display === 'none') {{
+                            roomviewImage.style.display = 'block';
+                            skyviewImage.style.display = 'none';
+                        }} else {{
+                            roomviewImage.style.display = 'none';
+                        }}
+                    }}
+
+                    document.getElementById('floorImage').addEventListener('mousemove', function(event) {{
+                        const img = event.target;
+                        const rect = img.getBoundingClientRect();
+                        const x = event.clientX - rect.left;
+                        const y = event.clientY - rect.top;
+                        const xPercent = (x / rect.width) * 100;
+                        const yPercent = (y / rect.height) * 100;
+                        document.getElementById('mousePosition').textContent = `X: ${{xPercent.toFixed(1)}} / Y: ${{yPercent.toFixed(1)}}`;
+                    }});
+
+                    document.getElementById('floorImage').addEventListener('click', function(event) {{
+                        const img = event.target;
+                        const rect = img.getBoundingClientRect();
+                        const x = event.clientX - rect.left;
+                        const y = event.clientY - rect.top;
+                        const xPercent = (x / rect.width) * 100;
+                        const yPercent = (y / rect.height) * 100;
+
+                        const sourceBox = document.getElementById('sourceBox');
+                        sourceBox.style.left = `${{xPercent}}%`;
+                        sourceBox.style.top = `${{yPercent}}%`;
+                        sourceBox.style.width = '5%';  
+                        sourceBox.style.height = getComputedStyle(sourceBox).width;
+                        sourceBox.style.display = 'block';
+
+                        const sourceLabel = document.getElementById('sourceLabel');
+                        let labelContent = `X: ${{xPercent.toFixed(1)}}<br>Y: ${{yPercent.toFixed(1)}}`;
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const noteText = urlParams.get('note');
+                        if ("{noteText}") {{
+                            labelContent = `{noteText}`;
+                        }}
+                        sourceLabel.innerHTML = labelContent;
+                        sourceLabel.style.left = `${{xPercent}}%`;
+                        sourceLabel.style.top = `${{yPercent + 5/2 + 1}}%`;
+                        sourceLabel.style.display = 'block';
+                        sourceLabel.style.backgroundColor = 'rgba(128, 0, 128, 0.6)';
+
+                        // Update the URL with the new parameters
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.set('x', xPercent.toFixed(1));
+                        newUrl.searchParams.set('y', yPercent.toFixed(1));
+                        window.history.pushState({{}}, '', newUrl);
+                    }});
+
+                    // Draw the destination box based on room coordinates
+                    function drawDestinationBox() {{
+                        const img = document.getElementById('floorImage');
+                        const destinationBox = document.getElementById('destinationBox');
+                        const rect = img.getBoundingClientRect();
+
+                        const roomX = {room_x};
+                        const roomY = {room_y};
+                        const roomW = {room_w + 0.1};
+                        const roomH = {room_h + 0.1};
+
+                        console.log('Drawing destination box with coordinates:', roomX, roomY, roomW, roomH); 
+
+                        destinationBox.style.left = `${{roomX}}%`;
+                        destinationBox.style.top = `${{roomY}}%`;
+                        destinationBox.style.width = `${{roomW}}%`;
+                        destinationBox.style.height = `${{roomH}}%`;
+                        destinationBox.style.display = 'block';
+
+                        const destinationLabel = document.getElementById('destinationLabel');
+                        let labelContent = `{org_request_id}<br>({destinationLabelText})`;
+                        destinationLabel.innerHTML = labelContent;
+                        destinationLabel.style.left = `${{roomX}}%`;
+                        destinationLabel.style.top = `${{roomY + roomH /2 + 1}}%`;
+                        destinationLabel.style.display = 'block';                        
+                        destinationLabel.style.textAlign = 'center';
+                    }}
+
+                    // Draw the highlight box based on query parameters
+                    function drawsourceBoxFromQuery(x, y) {{
+                        const sourceBox = document.getElementById('sourceBox');
+                        sourceBox.style.left = `${{x}}%`;
+                        sourceBox.style.top = `${{y}}%`;
+                        sourceBox.style.width = '5%';
+                        sourceBox.style.height = getComputedStyle(sourceBox).width;
+                        sourceBox.style.display = 'block';
+
+                        const sourceLabel = document.getElementById('sourceLabel');
+                        let labelContent = `X: ${{x.toFixed(1)}}<br>Y: ${{y.toFixed(1)}}`;
+                        if ("{noteText}") {{
+                            labelContent = `{noteText}`;
+                        }}
+                        sourceLabel.innerHTML = labelContent;
+                        sourceLabel.style.left = `${{x}}%`;
+                        sourceLabel.style.top = `${{y + 5/2 + 1}}%`;
+                        sourceLabel.style.display = 'block';     
+                        sourceLabel.style.backgroundColor = 'rgba(128, 0, 128, 0.6)';
+                    }}
+
+                    function initialize() {{
+                        console.log('Initializing...');
+                        if (!isFloorRequest) {{
+                            drawDestinationBox();
                         }}
 
-                        isOriginalSize = !isOriginalSize;
+                        if (xParam !== null && yParam !== null) {{
+                            drawsourceBoxFromQuery(xParam, yParam);
+                        }}
+
+                        console.log('Drawing building labels:', bNorthX, bNorthY, bMainGateX, bMainGateY); 
+
+                        if (bNorthX !== null && bNorthY !== null) {{
+                            const northLabel = document.getElementById('northLabel');
+                            northLabel.style.left = `${{bNorthX}}%`;
+                            northLabel.style.top = `${{bNorthY}}%`;
+                            northLabel.style.display = 'block';
+                        }}
+
+                        if (bMainGateX !== null && bMainGateY !== null) {{
+                            const mainGateLabel = document.getElementById('mainGateLabel');
+                            mainGateLabel.style.left = `${{bMainGateX}}%`;
+                            mainGateLabel.style.top = `${{bMainGateY}}%`;
+                            mainGateLabel.style.display = 'block';
+                        }}
+
+                    }}                
+
+                    function updateBoxSize() {{
+                        const sourceBox = document.getElementById('sourceBox');
+                        
+                        const sourceLabel = document.getElementById('sourceLabel');
+                        const floorIdentifier = document.querySelector('.floor-identifier');
+                        const mousePosition = document.querySelector('.mouse-position');
+                        const toggleSkyviewButton = document.getElementById('toggleSkyviewButton');
+                        const toggleRoomviewButton = document.getElementById('toggleRoomviewButton');
+
+                        const boxSize = 5;
+                        const fontSize = 1.6;
+                        const padding = 0.5;
+                        const borderThickness = 0.4;
+
+                        sourceBox.style.width = `${{boxSize}}%`;
+                        sourceBox.style.height = getComputedStyle(sourceBox).width;
+                        sourceBox.style.borderWidth = `${{borderThickness}}vw`;
+                        
+                        floorIdentifier.style.fontSize = `${{fontSize + 0.5}}vw`;
+                        floorIdentifier.style.padding = `${{padding}}% 1%`;
+                        mousePosition.style.fontSize = `${{fontSize - 0.2}}vw`;
+                        sourceLabel.style.fontSize = `${{fontSize}}vw`;
+                        sourceLabel.style.padding = `${{padding}}% 1%`;
+                        
+                        if (!isFloorRequest) {{
+                            const destinationBox = document.getElementById('destinationBox');
+                            const destinationLabel = document.getElementById('destinationLabel');
+                            destinationBox.style.borderWidth = `${{borderThickness}}vw`;
+                            destinationLabel.style.fontSize = `${{fontSize}}vw`;
+                            destinationLabel.style.padding = `${{padding}}% 1%`;                        
+                        }}
+
+                        if (toggleSkyviewButton) {{
+                            toggleSkyviewButton.style.fontSize = `${{fontSize}}vw`;
+                            toggleSkyviewButton.style.padding = `${{padding}}% 2%`;
+                        }}
+
+                        if (toggleRoomviewButton) {{
+                            toggleRoomviewButton.style.fontSize = `${{fontSize}}vw`;
+                            toggleRoomviewButton.style.padding = `${{padding}}% 2%`;
+                        }}
+
                     }}
+
+                    // Call the function to draw the destination box when the image is loaded
+                    document.addEventListener('DOMContentLoaded', function() {{
+                        console.log('Document loaded');
+                        const floorImage = document.getElementById('floorImage');
+                        if (floorImage.complete) {{
+                            console.log('Floor image already loaded');
+                            initialize();
+                        }} else {{
+                            floorImage.addEventListener('load', function() {{
+                                console.log('Floor image loaded');
+                                initialize();
+                            }});
+                        }}
+                    }});
+
+                    window.addEventListener('resize', updateBoxSize);
+
+                    // Add event listeners for floorIdentifier
+                    const floorIdentifier = document.querySelector('.floor-identifier');
+                    floorIdentifier.addEventListener('mouseover', function() {{
+                        floorIdentifier.textContent = 'Copy URL';
+                    }});
+
+                    floorIdentifier.addEventListener('mouseout', function() {{
+                        floorIdentifier.textContent = '{buildingText} {floor_only_id}층';
+                    }});
+
+                    floorIdentifier.addEventListener('click', function() {{
+                        const url = decodeURIComponent(window.location.href);
+                        if (navigator.clipboard) {{
+                            navigator.clipboard.writeText(url).then(function() {{
+                                alert(`Copied following URL to clipboard.\\n\\n${{url}}`);
+                            }}, function(err) {{
+                                console.error('Could not copy text: ', err);
+                            }});
+                        }} else {{
+                            const textArea = document.createElement('textarea');
+                            textArea.value = url;
+                            document.body.appendChild(textArea);
+                            textArea.select();
+                            try {{
+                                document.execCommand('copy');
+                                alert(`Copied following URL to clipboard.\\n\\n${{url}}`);
+                            }} catch (err) {{
+                                console.error('Could not copy text: ', err);
+                            }}
+                            document.body.removeChild(textArea);
+                        }}
+                    }});
+
                 </script>
             </body>
             </html>
@@ -730,6 +1162,7 @@ def view_room_highlighted(room_number):
 
     except Exception as e:
         return jsonify({"Message": f"An error occurred: {e}"}), 500
+
 
 def convert_image_to_base64(image_path):
     """
@@ -741,36 +1174,99 @@ def convert_image_to_base64(image_path):
     with open(image_path, "rb") as img_file:
         return base64.b64encode(img_file.read()).decode('utf-8')
 
+def search_and_get_room_info(room_id):
+    """
+    Logic to get information about a specific room.
+    :param room_id: The room number to get information about.
+    :param force: Boolean flag to force regeneration of the information.
+    :return: Tuple containing image size, room coordinates and dimensions, room_id, floor_id, building_id, floor_only_id, and similar_room flag.
+    """
 
+    analyzed_results = load_results_from_json()
 
-def view_room_highlighted_logic(room_number, force=False):
+    # Logic to find room information
+    if room_id in analyzed_results:
+        room_info = analyzed_results[room_id]
+        similar_room = False  # Exact match found
+    else:
+        similar_room = calculate_room_similarity(room_id, analyzed_results.keys())
+        if not similar_room or similar_room == room_id:  # Low similarity or no match found
+            return None, None, None, None, None, None, None, None, None, False
+        room_info = analyzed_results[similar_room]
+
+    floor_id = room_info['floor']
+    building_id, floor_only_id = split_floor_id(floor_id)
+
+    # Load the floor image to get its size
+    floor_image_path = os.path.join(tmp_directory, f"{floor_id}-map.png")
+    if os.path.exists(floor_image_path):
+        image = Image.open(floor_image_path)
+
+        room_x = room_info['x_ratio']
+        room_y = room_info['y_ratio']
+        room_w = room_info['w_ratio']
+        room_h = room_info['h_ratio']
+
+        return room_id, image.size, room_x, room_y, room_w, room_h, floor_id, building_id, floor_only_id, similar_room
+    else:
+        return None, None, None, None, None, None, None, None, None, False
+
+def get_suppliment_images(building_id=None, room_id=None):
+    """
+    Function to get skyview_image and room_image based on building_id or room_id.
+    :param building_id: The building ID to find the skyview image.
+    :param room_id: The room ID to find the room image.
+    :return: Tuple containing the Base64 encoded skyview_image and room_image, or None if not found.
+    """
+    skyview_image_base64 = None
+    room_image_base64 = None
+
+    if room_id:
+        building_id = room_id.split('-')[0]
+        
+    skyview_image_path = os.path.join("image/skyview", f"{building_id}.jpg")
+    if os.path.exists(skyview_image_path):
+        skyview_image_base64 = convert_image_to_base64(skyview_image_path)
+
+    if room_id:
+        room_image_path = os.path.join("image/room", f"{room_id}.jpg")
+        if os.path.exists(room_image_path):
+            room_image_base64 = convert_image_to_base64(room_image_path)
+
+    return skyview_image_base64, room_image_base64
+
+def search_and_highlight(room_id, force=False):
     """
     Logic to generate an image with a specific room number highlighted.
-    :param room_number: The room number to be highlighted in the image.
+    :param room_id: The room number to be highlighted in the image.
     :param force: Boolean flag to force regeneration of the image.
-    :return: Path to the generated image, or None if not found.
+    :return: Tuple containing the path to the generated image and its size, or (None, None) if not found.
     """
 
-    highlighted_image_path = os.path.join(tmp_directory, f"{room_number}-highlighted.png")
+    highlighted_image_path = os.path.join(tmp_directory, f"{room_id}-highlighted.png")
 
     # Check if the image already exists and if force regeneration is not required
     if not force and os.path.exists(highlighted_image_path):
-        return highlighted_image_path
+        with Image.open(highlighted_image_path) as img:
+            return highlighted_image_path, img.size
 
     analyzed_results = load_results_from_json()
 
     # Logic to generate a new highlighted image
-    if room_number in analyzed_results:
-        room_info = analyzed_results[room_number]
+    if room_id in analyzed_results:
+        room_info = analyzed_results[room_id]
         similar_room = None  # Exact match found
     else:
-        similar_room = calculate_room_similarity(room_number, analyzed_results.keys())
-        if not similar_room or similar_room == room_number:  # Low similarity or no match found
-            return None
+        similar_room = calculate_room_similarity(room_id, analyzed_results.keys())
+        if not similar_room or similar_room == room_id:  # Low similarity or no match found
+            return None, None
         room_info = analyzed_results[similar_room]
 
+    floor_id = room_info['floor']
+    building_id, floor_only_id = split_floor_id(floor_id)
+
     # Load the floor image and prepare for drawing
-    floor_image_path = os.path.join(tmp_directory, f"{room_info['floor']}-map.png")
+    floor_image_path = os.path.join(tmp_directory, f"{floor_id}-map.png")
     if os.path.exists(floor_image_path):
         image = Image.open(floor_image_path)
         draw = ImageDraw.Draw(image)
@@ -778,36 +1274,25 @@ def view_room_highlighted_logic(room_number, force=False):
         # Calculate the center coordinates of the image
         image_center_x, image_center_y = image.size[0] // 2, image.size[1] // 2
 
-        # Center of mark box
-        room_center_x = room_info['x'] + room_info['w'] // 2
-        room_center_y = room_info['y'] + room_info['h'] // 2
+        # Convert ratios back to pixel values
+        room_center_x = int(room_info['x_ratio'] / 100 * image.size[0])
+        room_center_y = int(room_info['y_ratio'] / 100 * image.size[1])
+        room_width = int(room_info['w_ratio'] / 100 * image.size[0])
+        room_height = int(room_info['h_ratio'] / 100 * image.size[1])
 
         # Enlarge the mark box
-        x_expand = room_info['w'] * 0.3
-        y_expand = room_info['h'] * 0.3
-        x, y, w, h = room_info['x'] - x_expand, room_info['y'] - y_expand, room_info['w'] + 2 * x_expand, room_info['h'] + 2 * y_expand
+        x_expand = room_width * 0.3
+        y_expand = room_height * 0.3
+        x, y, w, h = room_center_x - x_expand, room_center_y - y_expand, room_width + 2 * x_expand, room_height + 2 * y_expand
         draw.rectangle(((x, y), (x + w, y + h)), outline="yellow", width=7)
         draw.rectangle(((x, y), (x + w, y + h)), outline="red", width=3)
 
-        # Draw arrow and text
-        path = calculate_arrow_path(image_center_x, image_center_y, x, y, w, h)
-        for i in range(len(path) - 1):
-            draw_dashed_line(draw, path[i], path[i + 1], width=8, interval=12, fill="#32CD32")
-
-        draw_arrow_head(draw, path[-2], path[-1], arrow_size=40, fill="#32CD32")
-        message1 = f":{room_number}"
-        if similar_room:
-            message1 = f"? {room_number}"
-
-        mark_pos = (path[-1][0], path[-1][1])
-        draw_label(draw, message1 , mark_pos)
-
-        # Extract building number from room_number
-        building_number = room_number.split('-')[0]
+        # Save the highlighted image
+        image.save(highlighted_image_path)
 
         # Check for additional images
-        room_image_path = os.path.join("image/room", f"{room_number}.jpg")
-        skyview_image_path = os.path.join("image/skyview", f"{building_number}.jpg")
+        room_image_path = os.path.join("image/room", f"{room_id}.jpg")
+        skyview_image_path = os.path.join("image/skyview", f"{building_id}.jpg")
 
         room_image = None
         skyview_image = None
@@ -857,9 +1342,9 @@ def view_room_highlighted_logic(room_number, force=False):
         # Save the combined image
         combined_image.save(highlighted_image_path)
 
-        return highlighted_image_path
+        return highlighted_image_path, image.size
     else:
-        return None
+        return None, None
 
 
 
@@ -926,13 +1411,13 @@ def validate_images():
 
         combined_images = []
         with open('testset.txt', 'r') as file:
-            room_numbers = file.read().splitlines()
+            room_ids = file.read().splitlines()
 
-        for room_number in room_numbers:
+        for room_id in room_ids:
             # Call the view_room_highlighted function and get the image path
             # We're calling the function directly, but it's better to refactor this logic into a common function
             # that both view_room_highlighted and this route can use.
-            image_path = view_room_highlighted_logic(room_number)
+            image_path, _ = search_and_highlight(room_id)
             if os.path.exists(image_path):
                 combined_images.append(Image.open(image_path))
 
