@@ -69,25 +69,74 @@ def load_json_file(file_path):
     # Return an empty dictionary if all attempts fail
     return {}
 
-# Load alias.json once at the start of the program
+# Load map-alias.json once at the start of the program
 def load_alias_data():
     """
-    Loads alias data from alias.json, handling different encodings.
+    Loads alias data from map-alias.json, handling different encodings.
     :return: Parsed alias data as a dictionary, or an empty dictionary if loading fails.
     """
-    alias_file = 'alias.json'  # Define the file path
+    alias_file = 'map-alias.json'  # Define the file path
     if not os.path.exists(alias_file):
-        print("alias.json file not found.")
+        print("map-alias.json file not found.")
         return {}
     
     alias_data = load_json_file(alias_file)  # Use the helper function
     if alias_data:
         return alias_data
     else:
-        print("Failed to load alias.json or file is empty.")
+        print("Failed to load map-alias.json or file is empty.")
         return {}
 
 alias_data = load_alias_data()
+
+# Load map-note.json once at the start of the program
+def load_note_data():
+    """
+    Loads note data from map-note.json, handling different encodings.
+    :return: Parsed note data as a dictionary, or an empty dictionary if loading fails.
+    """
+    note_file = 'map-note.json'  # Define the file path
+    if not os.path.exists(note_file):
+        print("map-note.json file not found.")
+        return {}
+    
+    note_data = load_json_file(note_file)  # Use the helper function
+    if note_data:
+        return note_data
+    else:
+        print("Failed to load map-note.json or file is empty.")
+        return {}
+
+note_data = load_note_data()
+
+def get_note_data(request_id, floor_id, building_id):
+    """
+    Retrieves the note data matching the given IDs.
+    :param request_id: The request ID to search for.
+    :param floor_id: The floor ID to search for.
+    :param building_id: The building ID to search for.
+    :return: The matching note data as a dictionary, or None if no match is found.
+    """
+    note_data = load_note_data()  # Load the latest note data
+
+    if not note_data:
+        return None
+
+    # Check for exact match with request_id
+    if request_id and request_id in note_data:
+        return note_data[request_id]
+
+    # Check for match with floor_id
+    if floor_id and floor_id in note_data:
+        return note_data[floor_id]
+
+    # Check for match with building_id
+    if building_id and building_id in note_data:
+        return note_data[building_id]
+
+    # No match found
+    return None
+
 
 # Function to analyze an image and extract room number information
 def analyze_image(image_path, image_name):
@@ -525,7 +574,7 @@ def list_room_ids():
 @app.route('/alias', methods=['GET'])
 def get_alias():
     """
-    Reload alias.json and return the updated list.
+    Reload map-alias.json and return the updated list.
     """
     global alias_data
     try:
@@ -533,9 +582,9 @@ def get_alias():
         response = json.dumps(alias_data, ensure_ascii=False)
         return Response(response, content_type='application/json; charset=utf-8')
     except FileNotFoundError:
-        return jsonify({"error": "alias.json file not found."}), 404
+        return jsonify({"error": "map-alias.json file not found."}), 404
     except json.JSONDecodeError:
-        return jsonify({"error": "Error decoding alias.json file."}), 500
+        return jsonify({"error": "Error decoding map-alias.json file."}), 500
     except Exception as e:
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
     
@@ -655,8 +704,7 @@ def view_room_highlighted(request_id):
         if request_id in image_names:
             isFloorRequest = True
 
-        print(f"Original Request: {org_request_id}")
-        print(f"Adjusted Request: {request_id} (isFloorRequest: {isFloorRequest})")
+        print(f"Original Request: {org_request_id} Adjusted Request: {request_id} (isFloorRequest: {isFloorRequest})") 
 
         # Check if request_id starts with any of the image names or if it exists in analyzed_results
         if request_id not in analyzed_results and not any(request_id.startswith(name.upper()) for name in image_names):
@@ -669,20 +717,35 @@ def view_room_highlighted(request_id):
                 content_type="application/json; charset=utf-8",
                 status=404
             )
-        force = request.args.get('force', '').lower() == 'true'
-        highlighted_image_path, floor_image_size = search_and_highlight(request_id, force)
+
         request_id, image_size, room_x, room_y, room_w, room_h, floor_id, building_id, floor_only_id, similar_room = search_and_get_room_info(request_id)
 
+        if isFloorRequest:
+            floor_id = request_id
+            building_id, floor_only_id = split_floor_id(floor_id)
+
+        print(f"floor_id: {floor_id}, building_id: {building_id}, floor_only_id: {floor_only_id}")
         floor_image_path = os.path.join(tmp_directory, f"{floor_id}-map.png")
 
-        if not os.path.exists(highlighted_image_path):
-            return jsonify({"error": "Room number not found or image could not be created"}), 404
-
         skyview_image_base64, room_image_base64 = get_suppliment_images(room_id=request_id)
+
+        matched_note_data = get_note_data(request_id, floor_id, building_id)
+        # if matched_note_data:
+        #     print("Matched Note Data:", matched_note_data)
+        # else:
+        #     print("No matching note data found.")
+
+        b_name = matched_note_data.get('building_name') if matched_note_data and matched_note_data.get('building_name') else None
+        b_north_x = matched_note_data.get('north_x') if matched_note_data and matched_note_data.get('north_x') else None
+        b_north_y = matched_note_data.get('north_y') if matched_note_data and matched_note_data.get('north_y') else None
+        b_main_gate_x = matched_note_data.get('main_gate_x') if matched_note_data and matched_note_data.get('main_gate_x') else None
+        b_main_gate_y = matched_note_data.get('main_gate_y') if matched_note_data and matched_note_data.get('main_gate_y') else None
+        b_note = matched_note_data.get('note') if matched_note_data and matched_note_data.get('note') else None
         
         return_type = request.args.get('returnType', '').lower()
 
         destinationLabelText = f"{request_id} ?" if similar_room else request_id
+        buildingText = f"{b_name}" if b_name else f"{building_id}동" 
         noteText = f"{note_param}" if note_param else ""
 
 
@@ -728,7 +791,7 @@ def view_room_highlighted(request_id):
                         color: white;
                         background-color: rgba(0, 0, 0, 0.7);
                         padding: 0.5% 1%; 
-                        border-radius: 5px;
+                        border-radius: 0.5vw;
                         font-family: Arial, sans-serif;
                         font-size: 2.1vw; 
                         cursor: pointer;
@@ -745,7 +808,7 @@ def view_room_highlighted(request_id):
                         padding: 3% 6%; 
                         font-size: 1.6vw; 
                         border: none;
-                        border-radius: 5px;
+                        border-radius: 0.5vw;
                         cursor: pointer;
                         background-color: rgba(0, 0, 255, 0.7);
                         color: white;
@@ -760,7 +823,7 @@ def view_room_highlighted(request_id):
                         color: white;
                         background-color: rgba(0, 0, 0, 0.7);
                         padding: 0.5% 1%; 
-                        border-radius: 5px;
+                        border-radius: 0.5vw;
                         font-family: Arial, sans-serif;
                         font-size: 1.4vw; 
                     }}
@@ -771,7 +834,7 @@ def view_room_highlighted(request_id):
                         background-color: rgba(255, 0, 0, 0.1);
                         pointer-events: none;
                         transform: translate(-50%, -50%);
-                        animation: blink 3s infinite;
+                        animation: blink1 3s infinite;
                     }}
                     .destination-box {{
                         position: absolute;
@@ -780,7 +843,7 @@ def view_room_highlighted(request_id):
                         background-color: rgba(255, 0, 0, 0.1);
                         pointer-events: none;
                         transform: translate(-50%, -50%);
-                        animation: blink 3s infinite;
+                        animation: blink2 3s infinite;
                     }}
                     .box-label {{
                         transform: translate(-50%, 0);
@@ -790,20 +853,45 @@ def view_room_highlighted(request_id):
                         color: white;
                         background-color: rgba(0, 0, 255, 0.7);
                         padding: 0.1% 0.2%;
-                        border-radius: 5px;
+                        border-radius: 0.5vw;
                         font-family: Arial, sans-serif;
                         font-size: 1.6vw; 
                     }}                      
-                    @keyframes blink {{
-                        0% {{ border-color: yellow; background-color: rgba(255, 255, 0, 0.1); }}
-                        50% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
-                        100% {{ border-color: yellow; background-color: rgba(255, 255, 0, 0.1); }}
+                    .gate-label {{
+                        transform: translate(-50%, -50%);
+                        user-select: none;
+                        pointer-events: none;
+                        position: absolute;
+                        color: white;
+                        background-color: rgba(0, 0, 0, 0.5);
+                        padding: 0.2% 0.4%; 
+                        border-radius: 0.7vw;
+                        font-family: Arial, sans-serif;
+                        font-size: 1.4vw; 
+                        animation: blink3 8s infinite;
+                    }}                                          
+                    @keyframes blink1 {{
+                        0% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                        50% {{ border-color: red; background-color: rgba(255, 255, 0, 0.2); }}
+                        100% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
                     }}
+                    @keyframes blink2 {{
+                        0% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                        50% {{ border-color: red; background-color: rgba(255, 255, 0, 0.2); }}
+                        100% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
+                    }}  
+                    @keyframes blink3 {{
+                        0% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
+                        50% {{ background-color: rgba(0, 0, 0, 0.1); color: rgba(255, 255, 255, 0.1); }}
+                        100% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
+                    }}                        
                 </style>
             </head>
             <body>
                 <div class="image-container">
                     <img id="floorImage" src="data:image/png;base64,{convert_image_to_base64(floor_image_path)}" alt="Request: {org_request_id} ({request_id})" />
+                    <div id="northLabel" class="gate-label" style="display: none;">북쪽</div>
+                    <div id="mainGateLabel" class="gate-label" style="display: none;">주출입구방향</div>                                      
                     <div id="sourceBox" class="source-box" style="display: none;"></div>
                     <div id="destinationBox" class="destination-box" style="display: none;"></div>
                     <div id="destinationLabel" class="box-label" style="display: none;">{destinationLabelText}</div>
@@ -814,13 +902,19 @@ def view_room_highlighted(request_id):
                     </div>
                     <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%;" />
                     <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
-                    <div class="floor-identifier">{building_id}동 {floor_only_id}층</div>
+                    <div class="floor-identifier">{buildingText} {floor_only_id}층</div>
                     <div class="mouse-position" id="mousePosition">X: 0 / Y: 0</div>
                 </div>
             
                 <script>
 
                     const isFloorRequest = {str(isFloorRequest).lower()};
+                    const bNorthX = {b_north_x if b_north_x else 'null'};
+                    const bNorthY = {b_north_y if b_north_y else 'null'};
+                    const bMainGateX = {b_main_gate_x if b_main_gate_x else 'null'};
+                    const bMainGateY = {b_main_gate_y if b_main_gate_y else 'null'};
+                    const xParam = {x_param if x_param is not None else 'null'};
+                    const yParam = {y_param if y_param is not None else 'null'};
 
                     function toggleSkyview() {{
                         const skyviewImage = document.getElementById('skyviewImage');
@@ -900,7 +994,7 @@ def view_room_highlighted(request_id):
                         const roomW = {room_w + 0.1};
                         const roomH = {room_h + 0.1};
 
-                        console.log('Drawing destination box with coordinates:', roomX, roomY, roomW, roomH); // 콘솔 로그 추가
+                        console.log('Drawing destination box with coordinates:', roomX, roomY, roomW, roomH); 
 
                         destinationBox.style.left = `${{roomX}}%`;
                         destinationBox.style.top = `${{roomY}}%`;
@@ -944,11 +1038,26 @@ def view_room_highlighted(request_id):
                             drawDestinationBox();
                         }}
 
-                        const xParam = {x_param};
-                        const yParam = {y_param};
-                        if (xParam && yParam) {{
+                        if (xParam !== null && yParam !== null) {{
                             drawsourceBoxFromQuery(xParam, yParam);
                         }}
+
+                        console.log('Drawing building labels:', bNorthX, bNorthY, bMainGateX, bMainGateY); 
+
+                        if (bNorthX !== null && bNorthY !== null) {{
+                            const northLabel = document.getElementById('northLabel');
+                            northLabel.style.left = `${{bNorthX}}%`;
+                            northLabel.style.top = `${{bNorthY}}%`;
+                            northLabel.style.display = 'block';
+                        }}
+
+                        if (bMainGateX !== null && bMainGateY !== null) {{
+                            const mainGateLabel = document.getElementById('mainGateLabel');
+                            mainGateLabel.style.left = `${{bMainGateX}}%`;
+                            mainGateLabel.style.top = `${{bMainGateY}}%`;
+                            mainGateLabel.style.display = 'block';
+                        }}
+
                     }}                
 
                     function updateBoxSize() {{
@@ -1019,7 +1128,7 @@ def view_room_highlighted(request_id):
                     }});
 
                     floorIdentifier.addEventListener('mouseout', function() {{
-                        floorIdentifier.textContent = '{building_id}동 {floor_only_id}층';
+                        floorIdentifier.textContent = '{buildingText} {floor_only_id}층';
                     }});
 
                     floorIdentifier.addEventListener('click', function() {{
