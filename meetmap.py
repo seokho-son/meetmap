@@ -551,18 +551,36 @@ def sort_key(name):
     return (first_part, second_part)
 
 @app.route('/room', methods=['GET'])
+@app.route('/r', methods=['GET'])
 def list_room_ids():
     """
-    List all available room numbers.
-    :return: JSON response with a list of all room numbers.
+    List all available room numbers and aliases.
+    :return: JSON response with a list of all room numbers and aliases.
     """
+    keyword = request.args.get('key', '').lower() or request.args.get('k', '').lower()
     analyzed_results = load_results_from_json()
     sorted_room_ids = sorted(analyzed_results.keys(), key=sort_key)
+    
+    if keyword:
+        sorted_room_ids = [room_id for room_id in sorted_room_ids if keyword in room_id.lower()]
+    
+    global alias_data
+    alias_data = load_alias_data()
+    if keyword:
+        filtered_alias_data = {alias: replacement for alias, replacement in alias_data.items() if keyword in alias.lower() or keyword in replacement.lower()}
+    else:
+        filtered_alias_data = alias_data
+
+    # Convert filtered_alias_data to a list of dictionaries
+    alias_list = [{"alias": alias, "replacement": replacement} for alias, replacement in filtered_alias_data.items()]
+
     print(f"Total Room Numbers: {len(sorted_room_ids)}")
     print(sorted_room_ids)
     response = {
-        "Total room numbers": len(sorted_room_ids),
-        "All identified Rooms": sorted_room_ids
+        "room_count": len(sorted_room_ids),
+        "rooms": sorted_room_ids,
+        "alias_count": len(alias_list),
+        "aliases": alias_list
     }
     return Response(
         json.dumps(response, ensure_ascii=False),  # Ensure UTF-8 encoding
@@ -827,9 +845,23 @@ def view_room_highlighted(request_id):
                         font-family: Arial, sans-serif;
                         font-size: 1.4vw; 
                     }}
+                    .author-label {{
+                        position: absolute;
+                        bottom: 1%;                        
+                        left: 1%;
+                        color: white;
+                        background-color: rgba(0, 0, 0, 0);
+                        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+                        padding: 0.5% 1%; 
+                        border-radius: 0.5vw;
+                        font-family: Arial, sans-serif;
+                        font-size: 1.4vw; 
+                        pointer-events: none;
+                    }}                    
                     .source-box {{
                         position: absolute;
                         border: solid red;
+                        border-radius: 50%;
                         borderWidth: 0.8vw;
                         background-color: rgba(255, 0, 0, 0.1);
                         pointer-events: none;
@@ -904,6 +936,7 @@ def view_room_highlighted(request_id):
                     <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
                     <div class="floor-identifier">{buildingText} {floor_only_id}층</div>
                     <div class="mouse-position" id="mousePosition">X: 0 / Y: 0</div>
+                    <div class="author-label">© Ph.D. Seokho Son</div>
                 </div>
             
                 <script>
@@ -959,8 +992,9 @@ def view_room_highlighted(request_id):
                         const sourceBox = document.getElementById('sourceBox');
                         sourceBox.style.left = `${{xPercent}}%`;
                         sourceBox.style.top = `${{yPercent}}%`;
-                        sourceBox.style.width = '5%';  
+                        sourceBox.style.width = '4%';  
                         sourceBox.style.height = getComputedStyle(sourceBox).width;
+                        sourceBox.style.borderRadius = '50%';
                         sourceBox.style.display = 'block';
 
                         const sourceLabel = document.getElementById('sourceLabel');
@@ -987,7 +1021,6 @@ def view_room_highlighted(request_id):
                     function drawDestinationBox() {{
                         const img = document.getElementById('floorImage');
                         const destinationBox = document.getElementById('destinationBox');
-                        const rect = img.getBoundingClientRect();
 
                         const roomX = {room_x};
                         const roomY = {room_y};
@@ -1011,12 +1044,12 @@ def view_room_highlighted(request_id):
                         destinationLabel.style.textAlign = 'center';
                     }}
 
-                    // Draw the highlight box based on query parameters
+                    // Draw the sourceBox based on query parameters
                     function drawsourceBoxFromQuery(x, y) {{
                         const sourceBox = document.getElementById('sourceBox');
                         sourceBox.style.left = `${{x}}%`;
                         sourceBox.style.top = `${{y}}%`;
-                        sourceBox.style.width = '5%';
+                        sourceBox.style.width = '4%';
                         sourceBox.style.height = getComputedStyle(sourceBox).width;
                         sourceBox.style.display = 'block';
 
@@ -1058,6 +1091,8 @@ def view_room_highlighted(request_id):
                             mainGateLabel.style.display = 'block';
                         }}
 
+                        updateBoxSize();
+
                     }}                
 
                     function updateBoxSize() {{
@@ -1069,7 +1104,7 @@ def view_room_highlighted(request_id):
                         const toggleSkyviewButton = document.getElementById('toggleSkyviewButton');
                         const toggleRoomviewButton = document.getElementById('toggleRoomviewButton');
 
-                        const boxSize = 5;
+                        const boxSize = 4;
                         const fontSize = 1.6;
                         const padding = 0.5;
                         const borderThickness = 0.4;
