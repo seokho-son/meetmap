@@ -924,6 +924,8 @@ def view_room_highlighted(request_id):
             <body>
                 <div class="image-container">
                     <img id="floorImage" src="data:image/png;base64,{convert_image_to_base64(floor_image_path)}" alt="Request: {org_request_id} ({request_id})" />
+                    <div class="mouse-position" id="mousePosition">X: 0 / Y: 0</div>
+                    <div class="author-label">© Ph.D. Seokho Son</div>                    
                     <div id="northLabel" class="gate-label" style="display: none;">북쪽</div>
                     <div id="mainGateLabel" class="gate-label" style="display: none;">주출입구방향</div>                                      
                     <div id="sourceBox" class="source-box" style="display: none;"></div>
@@ -937,8 +939,6 @@ def view_room_highlighted(request_id):
                     <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%;" />
                     <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
                     <div class="floor-identifier">{buildingText} {floor_only_id}층</div>
-                    <div class="mouse-position" id="mousePosition">X: 0 / Y: 0</div>
-                    <div class="author-label">© Ph.D. Seokho Son</div>
                 </div>
             
                 <script>
@@ -1172,7 +1172,9 @@ def view_room_highlighted(request_id):
                         const url = decodeURIComponent(window.location.href);
                         if (navigator.clipboard) {{
                             navigator.clipboard.writeText(url).then(function() {{
-                                alert(`Copied following URL to clipboard.\\n\\n${{url}}`);
+                                if (confirm(`Copied following URL to clipboard.\n\n${{url}}\n\nDo you want to generate a QR code?`)) {{
+                                    generateQRCode(url);
+                                }}
                             }}, function(err) {{
                                 console.error('Could not copy text: ', err);
                             }});
@@ -1183,13 +1185,76 @@ def view_room_highlighted(request_id):
                             textArea.select();
                             try {{
                                 document.execCommand('copy');
-                                alert(`Copied following URL to clipboard.\\n\\n${{url}}`);
+                                if (confirm(`Copied following URL to clipboard.\n\n${{url}}\n\nDo you want to generate a QR code?`)) {{
+                                    generateQRCode(url);
+                                }}
                             }} catch (err) {{
                                 console.error('Could not copy text: ', err);
                             }}
                             document.body.removeChild(textArea);
                         }}
                     }});
+
+                    function generateQRCode(url) {{
+                        const qrWindow = window.open('', '_blank', 'width=400,height=500');
+                        const escapedUrl = url.replace(/'/g, "\\'");
+                        const qrHtml = `
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <title>QR Code</title>
+                                <script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"><\\/script>
+                                <style>
+                                    body {{
+                                        display: flex;
+                                        flex-direction: column;
+                                        justify-content: center;
+                                        align-items: center;
+                                        height: 100vh;
+                                        margin: 0;
+                                        background-color: #f0f0f0;
+                                        font-family: Arial, sans-serif;
+                                    }}
+                                    #qrcode {{
+                                        padding: 20px;
+                                        background: white;
+                                        border-radius: 10px;
+                                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                                    }}
+                                    .url-text {{
+                                        margin-top: 20px;
+                                        padding: 10px;
+                                        word-break: break-all;
+                                        max-width: 300px;
+                                        text-align: center;
+                                        font-size: 12px;
+                                        color: #666;
+                                    }}
+                                </style>
+                            </head>
+                            <body>
+                                <div id="qrcode"></div>
+                                <div class="url-text"></div>
+                                <script>
+                                    window.onload = function() {{
+                                        const url = '${{escapedUrl}}';
+                                        new QRCode(document.getElementById("qrcode"), {{
+                                            text: url,
+                                            width: 256,
+                                            height: 256,
+                                            colorDark: "#000000",
+                                            colorLight: "#ffffff",
+                                            correctLevel: QRCode.CorrectLevel.H
+                                        }});
+                                        document.querySelector('.url-text').textContent = url;
+                                    }};
+                                <\\/script>
+                            </body>
+                            </html>
+                        `;
+                        qrWindow.document.write(qrHtml);
+                        qrWindow.document.close();
+                    }}
 
                 </script>
             </body>
