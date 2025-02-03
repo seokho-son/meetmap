@@ -1247,7 +1247,7 @@ def view_room_highlighted(request_id):
                                             document.getElementById('qrcode').innerHTML = 'Error generating QR code: ' + e.message;
                                         }}
                                     }}
-                                <\/script>
+                                <\\/script>
                                 <style>
                                     body {{
                                         display: flex;
@@ -1281,7 +1281,7 @@ def view_room_highlighted(request_id):
                                 <div class="url-text"></div>
                                 <script>
                                     loadQRCodeScript();
-                                <\/script>
+                                <\\/script>
                             </body>
                             </html>
                         `;
