@@ -1202,8 +1202,52 @@ def view_room_highlighted(request_id):
                             <!DOCTYPE html>
                             <html>
                             <head>
+                                <meta charset="UTF-8">
                                 <title>QR Code</title>
-                                <script src="//cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"><\\/script>
+                                <script>
+                                    function loadQRCodeScript() {{
+                                        const script = document.createElement('script');
+                                        script.src = 'https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js';
+                                        script.onload = () => {{
+                                            console.log('QR Code library loaded successfully from jsdelivr CDN');
+                                            initQR();
+                                        }};
+                                        script.onerror = () => {{
+                                            console.log('jsdelivr CDN failed, trying cdnjs...');
+                                            const backupScript = document.createElement('script');
+                                            backupScript.src = 'http://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+                                            backupScript.onload = () => {{
+                                                console.log('QR Code library loaded successfully from cdnjs CDN');
+                                                initQR();
+                                            }};
+                                            backupScript.onerror = () => {{
+                                                console.error('Failed to load QR Code library from both CDNs');
+                                                document.getElementById('qrcode').innerHTML = 'Failed to load QR Code library';
+                                            }};
+                                            document.head.appendChild(backupScript);
+                                        }};
+                                        document.head.appendChild(script);
+                                    }}
+
+                                    function initQR() {{
+                                        try {{
+                                            const url = '${{escapedUrl}}';
+                                            new QRCode(document.getElementById("qrcode"), {{
+                                                text: url,
+                                                width: 256,
+                                                height: 256,
+                                                colorDark: "#000000",
+                                                colorLight: "#ffffff",
+                                                correctLevel: QRCode.CorrectLevel.H
+                                            }});
+                                            document.querySelector('.url-text').textContent = url;
+                                            console.log('QR Code generated successfully');
+                                        }} catch(e) {{
+                                            console.error('Error generating QR code:', e);
+                                            document.getElementById('qrcode').innerHTML = 'Error generating QR code: ' + e.message;
+                                        }}
+                                    }}
+                                <\/script>
                                 <style>
                                     body {{
                                         display: flex;
@@ -1236,19 +1280,8 @@ def view_room_highlighted(request_id):
                                 <div id="qrcode"></div>
                                 <div class="url-text"></div>
                                 <script>
-                                    window.onload = function() {{
-                                        const url = '${{escapedUrl}}';
-                                        new QRCode(document.getElementById("qrcode"), {{
-                                            text: url,
-                                            width: 256,
-                                            height: 256,
-                                            colorDark: "#000000",
-                                            colorLight: "#ffffff",
-                                            correctLevel: QRCode.CorrectLevel.H
-                                        }});
-                                        document.querySelector('.url-text').textContent = url;
-                                    }};
-                                <\\/script>
+                                    loadQRCodeScript();
+                                <\/script>
                             </body>
                             </html>
                         `;
