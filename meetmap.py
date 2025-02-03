@@ -1203,7 +1203,7 @@ def view_room_highlighted(request_id):
                             <html>
                             <head>
                                 <title>QR Code</title>
-                                <script src="https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"><\\/script>
+                                <script src="//cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js"><\\/script>
                                 <style>
                                     body {{
                                         display: flex;
