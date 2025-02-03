@@ -792,13 +792,15 @@ def view_room_highlighted(request_id):
                     }}
                     .image-container {{
                         position: relative;
+                        display: inline-block;
                         max-width: 100%;
-                        max-height: 100%;
+                        height: auto;
                         overflow: hidden;
                     }}
                     img {{
-                        max-width: 100%;
-                        max-height: 100%;
+                        display: block;
+                        width: 100%;
+                        height: 100%;
                         object-fit: contain;
                         transition: all 0.3s ease-in-out;
                     }}
