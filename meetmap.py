@@ -928,11 +928,11 @@ def view_room_highlighted(request_id):
                     <div class="mouse-position" id="mousePosition">X: 0 / Y: 0</div>
                     <div class="author-label">© Ph.D. Seokho Son</div>                    
                     <div id="northLabel" class="gate-label" style="display: none;">북쪽</div>
-                    <div id="mainGateLabel" class="gate-label" style="display: none;">주출입구방향</div>                                      
-                    <div id="sourceBox" class="source-box" style="display: none;"></div>
-                    <div id="destinationBox" class="destination-box" style="display: none;"></div>
+                    <div id="mainGateLabel" class="gate-label" style="display: none;">주출입구방향</div>   
                     <div id="destinationLabel" class="box-label" style="display: none;">{destinationLabelText}</div>
-                    <div id="sourceLabel" class="box-label" style="display: none;">X / Y</div>
+                    <div id="sourceLabel" class="box-label" style="display: none;">X / Y</div>                                 
+                    <div id="destinationBox" class="destination-box" style="display: none;"></div>
+                    <div id="sourceBox" class="source-box" style="display: none;"></div>
                     <div class="button-container">
                         <button id='shareWindowButton' onclick='openShareWindow()'>share</button>
                         {"<button id='toggleSkyviewButton' onclick='toggleSkyview()'>sky</button>" if skyview_image_base64 else ""}
