@@ -715,6 +715,7 @@ def view_room_highlighted(request_id):
         
         # Replace multiple consecutive "-" with a single "-"
         request_id = re.sub(r'-+', '-', request_id)
+        request_id = request_id.replace(" ", "")
 
         request_id = request_id.upper()
 
@@ -933,8 +934,9 @@ def view_room_highlighted(request_id):
                     <div id="destinationLabel" class="box-label" style="display: none;">{destinationLabelText}</div>
                     <div id="sourceLabel" class="box-label" style="display: none;">X / Y</div>
                     <div class="button-container">
+                        <button id='shareWindowButton' onclick='openShareWindow()'>share</button>
                         {"<button id='toggleSkyviewButton' onclick='toggleSkyview()'>sky</button>" if skyview_image_base64 else ""}
-                        {"<button id='toggleRoomviewButton' onclick='toggleRoomview()'>room</button>" if room_image_base64 else ""}
+                        {"<button id='toggleRoomviewButton' onclick='toggleRoomview()'>inside</button>" if room_image_base64 else ""}
                     </div>
                     <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%;" />
                     <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
@@ -962,6 +964,11 @@ def view_room_highlighted(request_id):
                         }}
                     }}
 
+                    function openShareWindow() {{
+                        const url = decodeURIComponent(window.location.href);
+                        generateQRCode(url);      
+                    }}
+
                     function toggleRoomview() {{
                         const roomviewImage = document.getElementById('roomviewImage');
                         const skyviewImage = document.getElementById('skyviewImage');
@@ -971,7 +978,7 @@ def view_room_highlighted(request_id):
                         }} else {{
                             roomviewImage.style.display = 'none';
                         }}
-                    }}
+                    }}                    
 
                     document.getElementById('floorImage').addEventListener('mousemove', function(event) {{
                         const img = event.target;
@@ -1105,6 +1112,7 @@ def view_room_highlighted(request_id):
                         const mousePosition = document.querySelector('.mouse-position');
                         const toggleSkyviewButton = document.getElementById('toggleSkyviewButton');
                         const toggleRoomviewButton = document.getElementById('toggleRoomviewButton');
+                        const shareWindowButton = document.getElementById('shareWindowButton');
 
                         const boxSize = 4;
                         const fontSize = 1.6;
@@ -1129,14 +1137,20 @@ def view_room_highlighted(request_id):
                             destinationLabel.style.padding = `${{padding}}% 1%`;                        
                         }}
 
+                        
+                        if (toggleRoomviewButton) {{
+                            toggleRoomviewButton.style.fontSize = `${{fontSize}}vw`;
+                            toggleRoomviewButton.style.padding = `${{padding}}% 2%`;
+                        }}
+                        
                         if (toggleSkyviewButton) {{
                             toggleSkyviewButton.style.fontSize = `${{fontSize}}vw`;
                             toggleSkyviewButton.style.padding = `${{padding}}% 2%`;
                         }}
 
-                        if (toggleRoomviewButton) {{
-                            toggleRoomviewButton.style.fontSize = `${{fontSize}}vw`;
-                            toggleRoomviewButton.style.padding = `${{padding}}% 2%`;
+                        if (shareWindowButton) {{
+                            shareWindowButton.style.fontSize = `${{fontSize}}vw`;
+                            shareWindowButton.style.padding = `${{padding}}% 2%`;
                         }}
 
                     }}
@@ -1197,7 +1211,20 @@ def view_room_highlighted(request_id):
 
                     function generateQRCode(url) {{
                         const qrWindow = window.open('', '_blank', 'width=400,height=500');
-                        const escapedUrl = url.replace(/'/g, "\\'");
+                        const encodedUrl = encodeURI(url);
+                        const escapedUrl = encodedUrl.replace(/'/g, "\\'");
+
+                        const urlObj = new URL(url);
+                        const hasLocation = urlObj.searchParams.has('x') && urlObj.searchParams.has('y');
+                        const initialNote = urlObj.searchParams.get('note') || '';        
+
+                        const noteInputHtml = hasLocation ? `
+                            <div class="note-container">
+                                <input type="text" class="note-input" placeholder="Add note for the location" value="${{initialNote}}">
+                                <button class="update-button" onclick="updateQRWithNote()">Update</button>
+                            </div>
+                        ` : '';                
+                        
                         const qrHtml = `
                             <!DOCTYPE html>
                             <html>
@@ -1207,7 +1234,7 @@ def view_room_highlighted(request_id):
                                 <script>
                                     function loadQRCodeScript() {{
                                         const script = document.createElement('script');
-                                        script.src = 'https://cdn.jsdelivr.net/npm/davidshimjs-qrcodejs@0.0.2/qrcode.min.js';
+                                        script.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
                                         script.onload = () => {{
                                             console.log('QR Code library loaded successfully from jsdelivr CDN');
                                             initQR();
@@ -1215,7 +1242,7 @@ def view_room_highlighted(request_id):
                                         script.onerror = () => {{
                                             console.log('jsdelivr CDN failed, trying cdnjs...');
                                             const backupScript = document.createElement('script');
-                                            backupScript.src = 'http://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+                                            backupScript.src = 'http://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
                                             backupScript.onload = () => {{
                                                 console.log('QR Code library loaded successfully from cdnjs CDN');
                                                 initQR();
@@ -1229,23 +1256,104 @@ def view_room_highlighted(request_id):
                                         document.head.appendChild(script);
                                     }}
 
+                                    function downloadQRCode() {{
+                                        const svg = document.querySelector('#qrcode svg');
+                                        const svgData = new XMLSerializer().serializeToString(svg);
+                                        const canvas = document.createElement('canvas');
+                                        const ctx = canvas.getContext('2d');
+                                        const img = new Image();
+                                        
+                                        img.onload = () => {{
+                                            canvas.width = 256;
+                                            canvas.height = 256;
+                                            ctx.fillStyle = 'white';
+                                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                            ctx.drawImage(img, 0, 0, 256, 256);
+                                            
+                                            const link = document.createElement('a');
+                                            link.download = 'QR-{org_request_id}.png';
+                                            link.href = canvas.toDataURL('image/png');
+                                            link.click();
+                                        }};
+                                        
+                                        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+                                    }}
+
                                     function initQR() {{
                                         try {{
-                                            const url = '${{escapedUrl}}';
-                                            new QRCode(document.getElementById("qrcode"), {{
-                                                text: url,
-                                                width: 256,
-                                                height: 256,
-                                                colorDark: "#000000",
-                                                colorLight: "#ffffff",
-                                                correctLevel: QRCode.CorrectLevel.H
+                                            const decodedUrl = decodeURI('${{escapedUrl}}');
+                                            const typeNumber = 0;
+                                            const errorCorrectionLevel = 'H';
+                                            const qr = qrcode(typeNumber, errorCorrectionLevel);
+                                            qr.addData('${{escapedUrl}}');
+                                            qr.make();
+                                            
+                                            document.getElementById('qrcode').innerHTML = qr.createSvgTag({{
+                                                cellSize: 4,
+                                                margin: 4
                                             }});
-                                            document.querySelector('.url-text').textContent = url;
+                                            document.querySelector('.url-text').textContent = decodedUrl;
+                                            document.getElementById('download-button').style.display = 'block';
                                             console.log('QR Code generated successfully');
+                                            console.log('Encoded URL:', '${{escapedUrl}}');
+                                            console.log('Decoded URL:', decodedUrl);
                                         }} catch(e) {{
-                                            console.error('Error generating QR code:', e);
-                                            document.getElementById('qrcode').innerHTML = 'Error generating QR code: ' + e.message;
+                                            console.error('QR Code error:', e);
+                                            document.getElementById('qrcode').innerHTML = 'Error: ' + e.message;
                                         }}
+                                    }}
+                                    
+                                    function copyToClipboard() {{
+                                        const url = document.querySelector('.url-text').textContent;
+                                        if (navigator.clipboard) {{
+                                            navigator.clipboard.writeText(url).then(() => {{
+                                                const copyButton = document.getElementById('copy-button');
+                                                copyButton.textContent = 'Copied!';
+                                                setTimeout(() => {{
+                                                    copyButton.textContent = 'Copy URL';
+                                                }}, 2000);
+                                            }});
+                                        }} else {{
+                                            const textArea = document.createElement('textarea');
+                                            textArea.value = url;
+                                            document.body.appendChild(textArea);
+                                            textArea.select();
+                                            try {{
+                                                document.execCommand('copy');
+                                                const copyButton = document.getElementById('copy-button');
+                                                copyButton.textContent = 'Copied!';
+                                                setTimeout(() => {{
+                                                    copyButton.textContent = 'Copy URL';
+                                                }}, 1500);
+                                            }} catch (err) {{
+                                                console.error('Could not copy text: ', err);
+                                            }}
+                                            document.body.removeChild(textArea);
+                                        }}
+                                    }}
+
+                                    function updateQRWithNote() {{
+                                        const noteInput = document.querySelector('.note-input');
+                                        const newNote = noteInput.value.trim();
+                                        const currentUrl = new URL('${{escapedUrl}}');
+                                        
+                                        if (newNote) {{
+                                            currentUrl.searchParams.set('note', newNote);
+                                        }} else {{
+                                            currentUrl.searchParams.delete('note');
+                                        }}
+                                        
+                                        const newUrl = currentUrl.toString();
+                                        const qr = qrcode(0, 'H');
+                                        qr.addData(newUrl);
+                                        qr.make();
+                                        document.getElementById('qrcode').innerHTML = qr.createSvgTag({{
+                                            cellSize: 4,
+                                            margin: 4
+                                        }});
+                                        
+                                        const decodedUrl = decodeURIComponent(currentUrl.href);
+                                        document.querySelector('.url-text').textContent = decodedUrl;
                                     }}
                                 <\\/script>
                                 <style>
@@ -1265,6 +1373,10 @@ def view_room_highlighted(request_id):
                                         border-radius: 10px;
                                         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                                     }}
+                                    #qrcode svg {{
+                                        width: 256px;
+                                        height: 256px;
+                                    }}
                                     .url-text {{
                                         margin-top: 20px;
                                         padding: 10px;
@@ -1274,11 +1386,88 @@ def view_room_highlighted(request_id):
                                         font-size: 12px;
                                         color: #666;
                                     }}
+                                    .info-text {{
+                                        margin-top: 20px;
+                                        padding: 10px;
+                                        word-break: break-all;
+                                        max-width: 300px;
+                                        text-align: center;
+                                        font-size: 12px;
+                                        color: black;
+                                    }}                                    
+                                    .button-container {{
+                                        display: flex;
+                                        gap: 10px;
+                                        margin-top: 20px;
+                                    }}
+                                    
+                                    #download-button, #copy-button {{
+                                        padding: 10px 20px;
+                                        border: none;
+                                        border-radius: 5px;
+                                        cursor: pointer;
+                                        font-size: 14px;
+                                    }}
+                                    
+                                    #download-button {{
+                                        background-color: #007bff;
+                                        color: white;
+                                    }}
+                                    
+                                    #copy-button {{
+                                        background-color: #28a745;
+                                        color: white;
+                                    }}
+                                    
+                                    #download-button:hover {{
+                                        background-color: #0056b3;
+                                    }}
+                                    
+                                    #copy-button:hover {{
+                                        background-color: #218838;
+                                    }}
+
+                                    .note-container {{
+                                        display: ${{hasLocation ? 'flex' : 'none'}};
+                                        gap: 10px;
+                                        align-items: center;
+                                        margin-top: 10px;
+                                        width: 100%;
+                                        max-width: 300px;
+                                    }}
+                                    .note-input {{
+                                        flex: 1;
+                                        padding: 8px;
+                                        border: 1px solid #ddd;
+                                        border-radius: 4px;
+                                        font-size: 12px;
+                                    }}
+                                    .update-button {{
+                                        padding: 8px 15px;
+                                        background-color: #6c757d;
+                                        color: white;
+                                        border: none;
+                                        border-radius: 4px;
+                                        cursor: pointer;
+                                        font-size: 12px;
+                                    }}
+                                    .update-button:hover {{
+                                        background-color: #5a6268;
+                                    }}
                                 </style>
                             </head>
                             <body>
                                 <div id="qrcode"></div>
-                                <div class="url-text"></div>
+                                <div class="info-text">
+                                    <div>Building: {buildingText} {floor_only_id}층</div>
+                                    <div>Label: {org_request_id} ({destinationLabelText})</div>
+                                    <div><span class="url-text"></span></div>
+                                </div>
+                                ${{noteInputHtml}}
+                                <div class="button-container">
+                                    <button id="download-button" onclick="downloadQRCode()">Download QR Code</button>
+                                    <button id="copy-button" onclick="copyToClipboard()">Copy URL</button>
+                                </div>
                                 <script>
                                     loadQRCodeScript();
                                 <\\/script>
