@@ -128,5 +128,26 @@
         "north_y": 3,
         "main_gate_x": 7,
         "main_gate_y": 38.4
-    }                                          
+    },
+    "701": {
+        "building_name": "대경권-본관",
+        "north_x": 22,
+        "north_y": 3,
+        "main_gate_x": 60.4,
+        "main_gate_y": 71.2
+    },
+    "702": {
+        "building_name": "대경권-2동",
+        "north_x": 50,
+        "north_y": 3,
+        "main_gate_x": 42.7,
+        "main_gate_y": 60.9
+    },
+    "801": {
+        "building_name": "호남권-본관",
+        "north_x": 3.1,
+        "north_y": 23,
+        "main_gate_x": 60.4,
+        "main_gate_y": 85.5
+    }
 }
