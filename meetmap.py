@@ -661,16 +661,32 @@ def is_number_in_range(num_str, range_str):
 @app.route('/d/<request_id>', methods=['GET'])
 def view_room_highlighted(request_id):
     """
-    View an image with a specific room number highlighted.
-    This endpoint sends an image with the specified room number highlighted, indicating its location.
-    :param request_id: The room number to be highlighted in the image.
-    :return: HTML response with the image or file response based on returnType parameter.
+        View an image with a specific room number highlighted.
+        This endpoint sends an image with the specified room number highlighted, indicating its location.
+
+        Query Parameters:
+            :param request_id: The room number to be highlighted in the image.
+            :param note: (str) Note text to display (optional)
+            :param n: (str) Alternative parameter for note (optional)
+            :param label: (str) Alternative parameter for note (optional) 
+            :param title: (str) Alternative parameter for note (optional)
+            :param returnType: (str) Response type - 'html' for web view or 'file' for direct image (optional)
+        
+        Returns:
+            :return: HTML response with the image or file response based on returnType parameter.
+            - HTML response: Rendered template with the image
+            - File response: Direct image file
     """
 
     try:
         x_param = request.args.get('x')
         y_param = request.args.get('y')
-        note_param = request.args.get('note')
+        note_param = (
+            request.args.get('note') or 
+            request.args.get('n') or 
+            request.args.get('label') or 
+            request.args.get('title')
+        )
 
         org_request_id = request_id
         # Replace multiple consecutive "-" with a single "-"
@@ -1216,11 +1232,15 @@ def view_room_highlighted(request_id):
 
                         const urlObj = new URL(url);
                         const hasLocation = urlObj.searchParams.has('x') && urlObj.searchParams.has('y');
-                        const initialNote = urlObj.searchParams.get('note') || '';        
+                        const initialNote = urlObj.searchParams.get('note') || 
+                                            urlObj.searchParams.get('n') || 
+                                            urlObj.searchParams.get('label') || 
+                                            urlObj.searchParams.get('title') || 
+                                            '';  
 
                         const noteInputHtml = hasLocation ? `
                             <div class="note-container">
-                                <input type="text" class="note-input" placeholder="Add note for the location" value="${{initialNote}}">
+                                <input type="text" class="note-input" placeholder="Change the label for the location" value="${{initialNote}}">
                                 <button class="update-button" onclick="updateQRWithNote()">Update</button>
                             </div>
                         ` : '';                
@@ -1337,10 +1357,13 @@ def view_room_highlighted(request_id):
                                         const newNote = noteInput.value.trim();
                                         const currentUrl = new URL('${{escapedUrl}}');
                                         
+                                        currentUrl.searchParams.delete('note');
+                                        currentUrl.searchParams.delete('n');
+                                        currentUrl.searchParams.delete('label');
+                                        currentUrl.searchParams.delete('title');
+                                        
                                         if (newNote) {{
-                                            currentUrl.searchParams.set('note', newNote);
-                                        }} else {{
-                                            currentUrl.searchParams.delete('note');
+                                            currentUrl.searchParams.set('n', newNote);
                                         }}
                                         
                                         const newUrl = currentUrl.toString();
