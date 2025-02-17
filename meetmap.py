@@ -153,7 +153,7 @@ def analyze_image(image_path, image_name):
     # Enhancing image quality (increasing contrast)
     enhancer = ImageEnhance.Contrast(image)
     image = enhancer.enhance(1.3)  # Increasing contrast
-    image.save(os.path.join(tmp_directory, f'{image_name}-0-image_after_enhance.png'))
+    image.save(os.path.join(tmp_directory, f'{image_name}-image_after_enhance.png'))
 
     # Resizing the image
     original_width, original_height = image.size
@@ -162,7 +162,7 @@ def analyze_image(image_path, image_name):
     new_width = int(aspect_ratio * new_height)
     resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
     resized_image.save(os.path.join(tmp_directory, f'{image_name}-map.png'))
-    print("Image Information:")
+    print(f"{image_name}")
     print(f"Original Size: {original_width}x{original_height}")
     print(f"Resized Size: {new_width}x{new_height}")
 
@@ -177,7 +177,7 @@ def analyze_image(image_path, image_name):
     # ocr_image = cv2.bilateralFilter(ocr_image, d=9, sigmaColor=75, sigmaSpace=75)
 
     # Save or return preprocessed image
-    preprocessed_path = os.path.join(tmp_directory, f'{image_name}-0-image_after_enhance.png')
+    preprocessed_path = os.path.join(tmp_directory, f'{image_name}-image_after_enhance.png')
     cv2.imwrite(preprocessed_path, ocr_image)
 
     # Function to run OCR on multiple page segmentation modes and combine results
@@ -218,47 +218,27 @@ def analyze_image(image_path, image_name):
     draw = ImageDraw.Draw(resized_image)
     font_size = 12
     font = ImageFont.truetype(font_path, font_size)
-    font_size = 10
-    fontSmall = ImageFont.truetype(font_path, font_size)
+
+    # sort by 'text'
+    sorted_data = sorted(zip(data['text'], data['conf'], data['left'], data['top'], data['width'], data['height']), key=lambda x: x[0])
+    data['text'], data['conf'], data['left'], data['top'], data['width'], data['height'] = zip(*sorted_data)
+
+    floorName = image_name.split('-')[1]
 
     # Parsing the extracted text and coordinates
     # Drawing rectangles around detected text on the image
     for i in range(len(data['text'])):
+        text = data['text'][i].strip()
+        draw.text((data['left'][i], data['top'][i] + data['height'][i]), f"{text}/{data['conf'][i]}%", fill="gray", font=font)
         if int(data['conf'][i]) > 0.4:  # Using low confidence texts as well
-            text = data['text'][i].strip()
-            draw.text((data['left'][i], data['top'][i] + data['height'][i]), f"{text}/{data['conf'][i]}%", fill="green", font=font)
-            if text:
-                print(f"{text} (Confidence: {data['conf'][i]}%)")
-                # Extract room number patterns
-                matches = re.findall(r'\b((L|G|B)?\d{2,3}(-\d+)?(~\d+)?)\b', text)
-                for match in matches:
-                    # Check for range or list patterns
-                    if '~' in match[0]:
-                        # Split at '~' and save both parts
-                        start, end = match[0].split('~')
-                        half_width = data['width'][i] // 2
-                        original_left = data['left'][i]  # Save the original 'left' value
+            confColor = "red" if data['conf'][i] < 50 else "green"
+            draw.text((data['left'][i], data['top'][i] + data['height'][i]), f"{text}/{data['conf'][i]}%", fill=confColor, font=font)
 
-                        # Adjust width for the start value and store
-                        data['width'][i] = half_width
-                        store_room_data(start.strip(), data, i, analyzed_results, image_name, resized_image.size)
-
-                        # Adjust left and width for the end value and store
-                        data['left'][i] = original_left + half_width
-                        data['width'][i] = half_width
-                        store_room_data(end.strip(), data, i, analyzed_results, image_name, resized_image.size)
-                    elif ',' in match[0]:
-                        # Split at ',' and save each part
-                        split_patterns = match[0].split(',')
-                        for room in split_patterns:
-                            store_room_data(room.strip(), data, i, analyzed_results, image_name, resized_image.size)
-                    elif '-' in match[0] and len(match[0].split('-')[0]) == len(match[0].split('-')[1]):
-                        # Split at '-' and save both parts if they have the same length
-                        start, end = match[0].split('-')
-                        store_room_data(start.strip(), data, i, analyzed_results, image_name, resized_image.size)
-                        store_room_data(end.strip(), data, i, analyzed_results, image_name, resized_image.size)
-                    else:
-                        store_room_data(match[0], data, i, analyzed_results, image_name, resized_image.size)
+            if text.startswith(floorName):
+                print(f"{image_name}: {text} (Confidence: {data['conf'][i]}%)")
+                store_room_data(text, data, i, analyzed_results, image_name, resized_image.size)
+            else:
+                print(f"{image_name}: (Not stored) {text} (Confidence: {data['conf'][i]}%)")
 
     for text, coords in analyzed_results.items():
         # Convert ratios back to pixel values
@@ -267,10 +247,18 @@ def analyze_image(image_path, image_name):
         w = int(coords["w_ratio"] / 100 * resized_image.size[0])
         h = int(coords["h_ratio"] / 100 * resized_image.size[1])
         print(f"- {text}: Location: X: {x}, Y: {y}, Width: {w}, Height: {h}")
-        draw.rectangle(((x, y), (x + w, y + h)), outline="red")
+
+        x = max(0, x)
+        y = max(0, y)
+        w = max(1, w)
+        h = max(1, h)
+        draw_x = x - w // 2
+        draw_y = y - h // 2
+        
+        draw.rectangle(((draw_x, draw_y), (draw_x + w, draw_y + h)), outline="red")
 
     # Saving the final image with highlighted text
-    resized_image.save(os.path.join(tmp_directory, f'{image_name}-7-highlighted_image.png'))
+    resized_image.save(os.path.join(tmp_directory, f'{image_name}-highlighted_image.png'))
     return analyzed_results
 
 
@@ -285,12 +273,13 @@ def store_room_data(room_id, data, index, analyzed_results, image_name, image_si
     :param image_name: The name of the image being analyzed, used for labeling.
     :param image_size: The size of the image (width, height).
     """
-    # Replace the first character of room_id with image_name for unique identification
-    room_id = image_name + room_id[1:]
+
+    BuildingName = image_name.split('-')[0]
+    room_id = BuildingName + "-" + room_id
 
     # Extract coordinates and dimensions of the detected text
     (x, y, width, height) = (data['left'][index], data['top'][index], data['width'][index], data['height'][index])
-    print(f"- {room_id}: Location: X: {x}, Y: {y}, Width: {width}, Height: {height}")
+    # print(f"- {room_id}: Location: X: {x}, Y: {y}, Width: {width}, Height: {height}")
 
     # Convert coordinates and dimensions to ratios based on image size
     image_width, image_height = image_size
@@ -661,16 +650,32 @@ def is_number_in_range(num_str, range_str):
 @app.route('/d/<request_id>', methods=['GET'])
 def view_room_highlighted(request_id):
     """
-    View an image with a specific room number highlighted.
-    This endpoint sends an image with the specified room number highlighted, indicating its location.
-    :param request_id: The room number to be highlighted in the image.
-    :return: HTML response with the image or file response based on returnType parameter.
+        View an image with a specific room number highlighted.
+        This endpoint sends an image with the specified room number highlighted, indicating its location.
+
+        Query Parameters:
+            :param request_id: The room number to be highlighted in the image.
+            :param note: (str) Note text to display (optional)
+            :param n: (str) Alternative parameter for note (optional)
+            :param label: (str) Alternative parameter for note (optional) 
+            :param title: (str) Alternative parameter for note (optional)
+            :param returnType: (str) Response type - 'html' for web view or 'file' for direct image (optional)
+        
+        Returns:
+            :return: HTML response with the image or file response based on returnType parameter.
+            - HTML response: Rendered template with the image
+            - File response: Direct image file
     """
 
     try:
         x_param = request.args.get('x')
         y_param = request.args.get('y')
-        note_param = request.args.get('note')
+        note_param = (
+            request.args.get('note') or 
+            request.args.get('n') or 
+            request.args.get('label') or 
+            request.args.get('title')
+        )
 
         org_request_id = request_id
         # Replace multiple consecutive "-" with a single "-"
@@ -1216,11 +1221,15 @@ def view_room_highlighted(request_id):
 
                         const urlObj = new URL(url);
                         const hasLocation = urlObj.searchParams.has('x') && urlObj.searchParams.has('y');
-                        const initialNote = urlObj.searchParams.get('note') || '';        
+                        const initialNote = urlObj.searchParams.get('note') || 
+                                            urlObj.searchParams.get('n') || 
+                                            urlObj.searchParams.get('label') || 
+                                            urlObj.searchParams.get('title') || 
+                                            '';  
 
                         const noteInputHtml = hasLocation ? `
                             <div class="note-container">
-                                <input type="text" class="note-input" placeholder="Add note for the location" value="${{initialNote}}">
+                                <input type="text" class="note-input" placeholder="Change the label for the location" value="${{initialNote}}">
                                 <button class="update-button" onclick="updateQRWithNote()">Update</button>
                             </div>
                         ` : '';                
@@ -1337,10 +1346,13 @@ def view_room_highlighted(request_id):
                                         const newNote = noteInput.value.trim();
                                         const currentUrl = new URL('${{escapedUrl}}');
                                         
+                                        currentUrl.searchParams.delete('note');
+                                        currentUrl.searchParams.delete('n');
+                                        currentUrl.searchParams.delete('label');
+                                        currentUrl.searchParams.delete('title');
+                                        
                                         if (newNote) {{
-                                            currentUrl.searchParams.set('note', newNote);
-                                        }} else {{
-                                            currentUrl.searchParams.delete('note');
+                                            currentUrl.searchParams.set('n', newNote);
                                         }}
                                         
                                         const newUrl = currentUrl.toString();
@@ -1673,11 +1685,12 @@ def search_and_highlight(room_id, force=False):
 
 
 
-def combine_images(tmp_directory, image_pattern):
+def combine_images(tmp_directory, image_name_postfix, image_name_prefix=None):
     """
-    Combines multiple images matching the given pattern into a single image.
+    Combines multiple images matching the given patterns into a single image.
     :param tmp_directory: The directory where the images are stored.
-    :param image_pattern: The pattern to match for image filenames.
+    :param image_name_postfix: The primary pattern to match for image filenames.
+    :param image_name_prefix: The secondary pattern to match for image filenames (optional).
     :return: Combined image object.
     """
 
@@ -1687,7 +1700,16 @@ def combine_images(tmp_directory, image_pattern):
             return (int(match.group(1)), match.group(2))
         return filename
 
-    image_files = sorted([f for f in os.listdir(tmp_directory) if image_pattern in f], key=sort_key)
+    if image_name_prefix:
+        image_files = sorted(
+            [f for f in os.listdir(tmp_directory) if image_name_postfix in f and f.startswith(f"{image_name_prefix}-")],
+            key=sort_key
+        )
+    else:
+        image_files = sorted(
+            [f for f in os.listdir(tmp_directory) if image_name_postfix in f],
+            key=sort_key
+        )
     # print("Sorted image files:", image_files)
     images = [Image.open(os.path.join(tmp_directory, img_file)) for img_file in image_files]
 
@@ -1716,6 +1738,7 @@ def validate_images():
     The 'force' query parameter can be used to force the regeneration of the combined image.
 
     - 'test=true': Generates and combines images for room numbers read from 'test.txt'.
+    - 'target=<prefix>': Combines images with filenames starting with the given prefix.
     - 'force=true': Ignores any cached combined image and forces the creation and combination of new images.
     -  Without 'force' parameter or with 'force=false': If a previously generated combined image exists, it's returned.   
 
@@ -1723,6 +1746,7 @@ def validate_images():
     """
     test = request.args.get('test')
     force = request.args.get('force')
+    target = request.args.get('target')
 
 
     # If the test parameter is provided, perform validation on the test
@@ -1766,15 +1790,21 @@ def validate_images():
     else:
         combined_image_path = os.path.join(tmp_directory, 'combined_image.png')
 
-        if not force:
-            if os.path.exists(combined_image_path):
-                return send_file(combined_image_path, mimetype='image/png')
+        try:
+            if target:
+                combined_image_path = os.path.join(tmp_directory, f'{target}-combined_image.png')
+                combined_image = combine_images(tmp_directory, '-highlighted_image.png', target)
+            else:
+                if not force:
+                    if os.path.exists(combined_image_path):
+                        return send_file(combined_image_path, mimetype='image/png')
+                combined_image = combine_images(tmp_directory, '-highlighted_image.png')
+        
+            combined_image.save(combined_image_path)
 
-        # Original behavior for combining highlighted images
-        combined_image = combine_images(tmp_directory, '-7-highlighted_image.png')
-        combined_image.save(combined_image_path)
-
-        return send_file(combined_image_path, mimetype='image/png')
+            return send_file(combined_image_path, mimetype='image/png')
+        except ValueError as e:
+            return jsonify({"error": f"Cannot validate the requested building floors: {str(e)}"}), 404
 
 
 analyzed_results = {}
