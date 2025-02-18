@@ -921,9 +921,9 @@ def view_room_highlighted(request_id):
                         100% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
                     }}  
                     @keyframes blink3 {{
-                        0% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
-                        50% {{ background-color: rgba(0, 0, 0, 0.1); color: rgba(255, 255, 255, 0.1); }}
-                        100% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
+                        0% {{ background-color: rgba(0, 0, 0, 0.4); color: rgba(255, 255, 255, 1); }}
+                        50% {{ background-color: rgba(0, 0, 0, 0.2); color: rgba(255, 255, 255, 0.6); }}
+                        100% {{ background-color: rgba(0, 0, 0, 0.4); color: rgba(255, 255, 255, 1); }}
                     }}                        
                 </style>
             </head>
@@ -1854,5 +1854,5 @@ if __name__ == '__main__':
 
     # Start the Flask server
         # Run the Flask app with debug mode on, accessible on all interfaces on port 80
-    app.run(debug=True, host='0.0.0.0', port=80)  
+    app.run(debug=False, host='0.0.0.0', port=80)  
 
