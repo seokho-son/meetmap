@@ -1,8 +1,12 @@
 # Ignore map.json file
 map.json
+map-note.json
+map-customization.json
+map-alias.json
 
-# Ignore tmp directory
+# Ignore tmp and image directory
 tmp/
+image/
 
 # Ignore initPyEnv directory
 initPyEnv/

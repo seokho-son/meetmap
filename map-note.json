@@ -4,150 +4,174 @@
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 50,
-        "main_gate_y": 93
+        "main_gate_y": 93,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582441&urlY=801144"
     }, 
     "2": {
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 5,
-        "main_gate_y": 50
+        "main_gate_y": 50,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582167&urlY=801095"
     },
     "2-B": {
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 7,
-        "main_gate_y": 50
+        "main_gate_y": 50,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582167&urlY=801095"
     }, 
     "3": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 94,
-        "main_gate_y": 50.5
+        "main_gate_y": 50.5,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582220&urlY=801454"
     }, 
     "4": {
         "north_x": 3,
         "north_y": 50,
         "main_gate_x": 91,
-        "main_gate_y": 8
+        "main_gate_y": 8,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582068&urlY=801450"
     },
     "5": {
         "building_name": "식당동(5동)",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 92.7,
-        "main_gate_y": 50.2
+        "main_gate_y": 50.2,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582176&urlY=801242"
     },
     "6": {
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 50,
-        "main_gate_y": 92
+        "main_gate_y": 92,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581873&urlY=801266"
     },
     "7": {
         "north_x": 97,
         "north_y": 50,
         "main_gate_x": 50,
-        "main_gate_y": 67
+        "main_gate_y": 67,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581870&urlY=801045"
     },
     "8": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 50,
-        "main_gate_y": 70.4
+        "main_gate_y": 70.4,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581920&urlY=801422"
     },
     "8-B": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 9,
-        "main_gate_y": 81.6
+        "main_gate_y": 81.6,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581920&urlY=801422"
     },
     "9": {
         "building_name": "방문동(9동)",
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 30,
-        "main_gate_y": 27.2
+        "main_gate_y": 27.2,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582331&urlY=801675"
     },
     "10": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 65,
-        "main_gate_y": 80.5
+        "main_gate_y": 80.5,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581596&urlY=801381"
     },
     "10-2": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 74.3,
-        "main_gate_y": 88.7
+        "main_gate_y": 88.7,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581596&urlY=801381"
     },
     "10-3": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 80.1,
-        "main_gate_y": 84.4
+        "main_gate_y": 84.4,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581596&urlY=801381"
     },
     "11": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 50.7,
-        "main_gate_y": 13
+        "main_gate_y": 13,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581440&urlY=801507"
     },
     "12": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 34,
-        "main_gate_y": 90
+        "main_gate_y": 90,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582479&urlY=800721"
     },
     "13": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 37,
-        "main_gate_y": 6.6
+        "main_gate_y": 6.6,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=583003&urlY=801714"
     },
     "13-B": {
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 30,
-        "main_gate_y": 3
+        "main_gate_y": 3,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=583003&urlY=801714"
     },
     "901": {
         "building_name": "동력동",
         "north_x": 50,
-        "north_y": 3
+        "north_y": 3,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582178&urlY=800885"
     },
     "902": {
         "building_name": "드론시험동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 80,
-        "main_gate_y": 3
+        "main_gate_y": 3,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581648&urlY=801307"
     },
     "903": {
         "building_name": "체육동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 7,
-        "main_gate_y": 38.4
+        "main_gate_y": 38.4,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582086&urlY=800753"
     },
     "701": {
         "building_name": "대경권-본관",
         "north_x": 22,
         "north_y": 3,
         "main_gate_x": 60.4,
-        "main_gate_y": 71.2
+        "main_gate_y": 71.2,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=833071&urlY=611622"
     },
     "702": {
         "building_name": "대경권-2동",
         "north_x": 50,
-        "north_y": 3,
+        "north_y": 97,
         "main_gate_x": 42.7,
-        "main_gate_y": 60.9
+        "main_gate_y": 60.9,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=833300&urlY=611679"
     },
     "801": {
         "building_name": "호남권-본관",
         "north_x": 3.1,
         "north_y": 23,
         "main_gate_x": 60.4,
-        "main_gate_y": 85.5
+        "main_gate_y": 85.5,
+        "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=465001&urlY=480281"
     }
 }

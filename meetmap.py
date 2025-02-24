@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2024 Seokho Son <https://github.com/seokho-son/meetmap>
+# SPDX-License-Identifier: Apache-2.0
+
 # Importing necessary libraries
 import sys
 import numpy as np
@@ -5,15 +8,18 @@ import re
 import os
 import json
 import cv2  # OpenCV library for computer vision tasks
-from PIL import Image, ImageDraw, ImageFont, ImageEnhance, ImageFilter
-from flask import Flask, jsonify, redirect, url_for, request, send_file, Response
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from flask import Flask, send_from_directory, jsonify, request, send_file, Response
 import easyocr  # EasyOCR library for text recognition
 
 # Initializing Flask application
 app = Flask(__name__)
 
-# Initialize EasyOCR Reader (supports multiple languages, e.g., ['en', 'ko'])
-reader = easyocr.Reader(['en'], gpu=True)  # Use GPU if available
+# Initialize EasyOCR Reader
+# Dependencies: Requires PyTorch
+# Legal Notice: Enabling GPU mode (gpu=True) subjects this usage to NVIDIA EULA as it utilizes NVIDIA CUDA
+#              CPU mode (gpu=False) operates without NVIDIA CUDA components
+reader = easyocr.Reader(['en'], gpu=True)  # GPU/CPU mode can be configured as needed
 
 # NanumSquareL.ttf Font License - https://help.naver.com/service/30016/contents/18088?osType=PC&lang=ko
 font_path = "assets/NanumSquareL.ttf"
@@ -640,6 +646,10 @@ def is_number_in_range(num_str, range_str):
     expanded_range = expand_range(range_str)
     return num_str in expanded_range
 
+@app.route('/assets/favicon.ico')
+def favicon():
+    return send_from_directory('assets', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
 @app.route('/room/<request_id>', methods=['GET'])
 @app.route('/view/<request_id>', methods=['GET'])
 @app.route('/find/<request_id>', methods=['GET'])
@@ -765,6 +775,7 @@ def view_room_highlighted(request_id):
         b_main_gate_x = matched_note_data.get('main_gate_x') if matched_note_data and matched_note_data.get('main_gate_x') else None
         b_main_gate_y = matched_note_data.get('main_gate_y') if matched_note_data and matched_note_data.get('main_gate_y') else None
         b_note = matched_note_data.get('note') if matched_note_data and matched_note_data.get('note') else None
+        b_skyview_link = matched_note_data.get('skyview_link') if matched_note_data and matched_note_data.get('skyview_link') not in [None, ""] else None
         
         return_type = request.args.get('returnType', '').lower()
 
@@ -785,6 +796,7 @@ def view_room_highlighted(request_id):
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Map:{request_id}</title>
+                <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
                 <style>
                     body {{
                         margin: 0;
@@ -808,7 +820,16 @@ def view_room_highlighted(request_id):
                         width: 100%;
                         height: 100%;
                         object-fit: contain;
-                        transition: all 0.3s ease-in-out;
+                        transition: all 0.3s ease-in-out;  
+                        -webkit-user-drag: none;
+                        -khtml-user-drag: none;
+                        -moz-user-drag: none;
+                        -o-user-drag: none;
+                        user-drag: none;
+                        pointerEvents = 'auto';
+                        user-select: none;
+                        -webkit-user-select: none;
+                        -ms-user-select: none;
                     }}
                     .floor-identifier {{
                         position: absolute;
@@ -921,9 +942,9 @@ def view_room_highlighted(request_id):
                         100% {{ border-color: blue; background-color: rgba(255, 255, 255, 0.01); }}
                     }}  
                     @keyframes blink3 {{
-                        0% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
-                        50% {{ background-color: rgba(0, 0, 0, 0.1); color: rgba(255, 255, 255, 0.1); }}
-                        100% {{ background-color: rgba(0, 0, 0, 0.5); color: rgba(255, 255, 255, 1); }}
+                        0% {{ background-color: rgba(0, 0, 0, 0.4); color: rgba(255, 255, 255, 1); }}
+                        50% {{ background-color: rgba(0, 0, 0, 0.2); color: rgba(255, 255, 255, 0.6); }}
+                        100% {{ background-color: rgba(0, 0, 0, 0.4); color: rgba(255, 255, 255, 1); }}
                     }}                        
                 </style>
             </head>
@@ -940,11 +961,11 @@ def view_room_highlighted(request_id):
                     <div id="sourceBox" class="source-box" style="display: none;"></div>
                     <div class="button-container">
                         <button id='shareWindowButton' onclick='openShareWindow()'>share</button>
-                        {"<button id='toggleSkyviewButton' onclick='toggleSkyview()'>sky</button>" if skyview_image_base64 else ""}
+                        {"<button id='toggleSkyviewButton' onclick='toggleSkyview()'>sky</button>"}
                         {"<button id='toggleRoomviewButton' onclick='toggleRoomview()'>inside</button>" if room_image_base64 else ""}
                     </div>
-                    <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%;" />
-                    <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
+                    <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%; pointer-events: none;" />
+                    <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%; pointer-events: none;" />
                     <div class="floor-identifier">{buildingText} {floor_only_id}층</div>
                 </div>
             
@@ -955,17 +976,22 @@ def view_room_highlighted(request_id):
                     const bNorthY = {b_north_y if b_north_y else 'null'};
                     const bMainGateX = {b_main_gate_x if b_main_gate_x else 'null'};
                     const bMainGateY = {b_main_gate_y if b_main_gate_y else 'null'};
+                    const bSkyviewLink = "{b_skyview_link if b_skyview_link else 'null'}";
                     const xParam = {x_param if x_param is not None else 'null'};
                     const yParam = {y_param if y_param is not None else 'null'};
 
                     function toggleSkyview() {{
                         const skyviewImage = document.getElementById('skyviewImage');
                         const roomviewImage = document.getElementById('roomviewImage');
-                        if (skyviewImage.style.display === 'none') {{
-                            skyviewImage.style.display = 'block';
-                            roomviewImage.style.display = 'none';
+                        if (bSkyviewLink !== 'null') {{
+                            window.open(bSkyviewLink, '_blank');
                         }} else {{
-                            skyviewImage.style.display = 'none';
+                            if (skyviewImage.style.display === 'none') {{
+                                skyviewImage.style.display = 'block';
+                                roomviewImage.style.display = 'none';
+                            }} else {{
+                                skyviewImage.style.display = 'none';
+                            }}
                         }}
                     }}
 
@@ -993,6 +1019,11 @@ def view_room_highlighted(request_id):
                         const xPercent = (x / rect.width) * 100;
                         const yPercent = (y / rect.height) * 100;
                         document.getElementById('mousePosition').textContent = `X: ${{xPercent.toFixed(1)}} / Y: ${{yPercent.toFixed(1)}}`;
+                    }});
+
+                    document.getElementById('floorImage').addEventListener('contextmenu', function(event) {{
+                            event.preventDefault();
+                            alert("This image is protected and cannot be saved.");
                     }});
 
                     document.getElementById('floorImage').addEventListener('click', function(event) {{
@@ -1854,5 +1885,5 @@ if __name__ == '__main__':
 
     # Start the Flask server
         # Run the Flask app with debug mode on, accessible on all interfaces on port 80
-    app.run(debug=True, host='0.0.0.0', port=80)  
+    app.run(debug=False, host='0.0.0.0', port=80)  
 

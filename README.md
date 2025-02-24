@@ -240,3 +240,8 @@ graph TD
 ## License
 
 This project is licensed under the Apache 2.0 License.
+
+### Third-Party Licenses
+
+This project depends on various third-party open-source libraries, which are distributed under their respective licenses (e.g., BSD, MIT, Apache 2.0).  
+A list of third-party libraries and their licenses can be found in the **[THIRD_PARTY_LICENSES](./THIRD_PARTY_LICENSES)** file.
