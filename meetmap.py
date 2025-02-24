@@ -820,7 +820,16 @@ def view_room_highlighted(request_id):
                         width: 100%;
                         height: 100%;
                         object-fit: contain;
-                        transition: all 0.3s ease-in-out;
+                        transition: all 0.3s ease-in-out;  
+                        -webkit-user-drag: none;
+                        -khtml-user-drag: none;
+                        -moz-user-drag: none;
+                        -o-user-drag: none;
+                        user-drag: none;
+                        pointerEvents = 'auto';
+                        user-select: none;
+                        -webkit-user-select: none;
+                        -ms-user-select: none;
                     }}
                     .floor-identifier {{
                         position: absolute;
@@ -955,8 +964,8 @@ def view_room_highlighted(request_id):
                         {"<button id='toggleSkyviewButton' onclick='toggleSkyview()'>sky</button>"}
                         {"<button id='toggleRoomviewButton' onclick='toggleRoomview()'>inside</button>" if room_image_base64 else ""}
                     </div>
-                    <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%;" />
-                    <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%;" />
+                    <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%; pointer-events: none;" />
+                    <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%; pointer-events: none;" />
                     <div class="floor-identifier">{buildingText} {floor_only_id}층</div>
                 </div>
             
@@ -1010,6 +1019,11 @@ def view_room_highlighted(request_id):
                         const xPercent = (x / rect.width) * 100;
                         const yPercent = (y / rect.height) * 100;
                         document.getElementById('mousePosition').textContent = `X: ${{xPercent.toFixed(1)}} / Y: ${{yPercent.toFixed(1)}}`;
+                    }});
+
+                    document.getElementById('floorImage').addEventListener('contextmenu', function(event) {{
+                            event.preventDefault();
+                            alert("This image is protected and cannot be saved.");
                     }});
 
                     document.getElementById('floorImage').addEventListener('click', function(event) {{
