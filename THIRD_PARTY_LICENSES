@@ -1,0 +1,60 @@
+# Third-Party Licenses
+
+This project includes third-party libraries that are licensed under the following terms:
+
+## requirements.txt
+
+### Flask
+- Version: 3.1.0
+- Homepage: [Flask](https://github.com/pallets/flask)
+- License: [BSD-3-Clause](https://github.com/pallets/flask/blob/main/LICENSE.txt)
+
+### numpy
+- Version: 2.2.1
+- Homepage: [numpy](https://numpy.org/)
+- License: [BSD-3-Clause](https://github.com/numpy/numpy/blob/main/LICENSE.txt)
+
+### Pillow
+- Version: 11.0.0
+- Homepage: [Pillow](https://python-pillow.org/)
+- License: [MIT-CMU](https://github.com/python-pillow/Pillow/blob/main/LICENSE)
+
+### OpenCV-Python-Headless
+- Version: 4.10.0.84
+- Homepage: [opencv-python](https://github.com/opencv/opencv-python)
+- License: [MIT](https://github.com/opencv/opencv-python/blob/4.x/LICENSE.txt)
+
+### EasyOCR (Apache-2.0)
+- Version: 1.7.2
+- Homepage: [EasyOCR](https://github.com/jaidedai/easyocr)
+- License: [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0)
+
+### PyTorch
+- Version: 2.5.1
+- Homepage: [PyTorch](https://pytorch.org/)
+- License: [BSD-3-Clause](https://github.com/pytorch/pytorch/blob/main/LICENSE)
+
+### TorchVision
+- Version: 0.20.1
+- Homepage: [TorchVision](https://github.com/pytorch/vision)
+- License: [BSD-3-Clause](https://github.com/pytorch/vision/blob/main/LICENSE)
+
+### Gunicorn (MIT License)
+- Version: 23.0.0
+- Homepage: [Gunicorn](https://gunicorn.org/)
+- License: [MIT](https://github.com/benoitc/gunicorn/blob/master/LICENSE)
+
+## Fonts
+
+### NanumSquare Light (SIL Open Font License 1.1)
+- NanumSquareL.ttf Font License - https://help.naver.com/service/30016/contents/18088?osType=PC&lang=ko
+- font_path = assets/NanumSquareL.ttf
+- Copyright (c) 2010, NAVER Corporation (https://www.navercorp.com/) with Reserved Font Name Nanum, 
+  Naver Nanum, NanumGothic, Naver NanumGothic, NanumMyeongjo, Naver NanumMyeongjo, NanumBrush, 
+  Naver NanumBrush, NanumPen, Naver NanumPen, Naver NanumGothicEco, NanumGothicEco, 
+  Naver NanumMyeongjoEco, NanumMyeongjoEco, Naver NanumGothicLight, NanumGothicLight, 
+  NanumBarunGothic, Naver NanumBarunGothic, NanumSquareRound, NanumBarunPen, MaruBuri, NanumSquareNeo
+  This Font Software is licensed under the SIL Open Font License, Version 1.1.
+  This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL
+  SIL OPEN FONT LICENSE
+  Version 1.1 - 26 February 2007 
