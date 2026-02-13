@@ -31,8 +31,13 @@ def get_ocr_reader():
         reader = easyocr.Reader(['en'], gpu=True)  # GPU/CPU mode can be configured as needed
     return reader
 
+# Get the directory where this script is located (for reliable path resolution)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Font configuration
 # NanumSquareL.ttf Font License - https://help.naver.com/service/30016/contents/18088?osType=PC&lang=ko
-font_path = "assets/NanumSquareL.ttf"
+FONT_FILENAME = "NanumSquareL.ttf"
+font_path = os.path.join(SCRIPT_DIR, "assets", FONT_FILENAME)
 # Copyright (c) 2010, NAVER Corporation (https://www.navercorp.com/) with Reserved Font Name Nanum, 
 # Naver Nanum, NanumGothic, Naver NanumGothic, NanumMyeongjo, Naver NanumMyeongjo, NanumBrush, 
 # Naver NanumBrush, NanumPen, Naver NanumPen, Naver NanumGothicEco, NanumGothicEco, 
@@ -43,12 +48,34 @@ font_path = "assets/NanumSquareL.ttf"
 # SIL OPEN FONT LICENSE
 # Version 1.1 - 26 February 2007 
 
+# Verify font file exists at startup
+if not os.path.exists(font_path):
+    print(f"ERROR: Font file not found: {font_path}")
+    print(f"This font is required for Korean text display.")
+    print(f"")
+    print(f"To resolve this issue:")
+    print(f"  1. Add a Korean-supporting font file to: {os.path.dirname(font_path)}")
+    print(f"  2. Or update the 'FONT_FILENAME' variable in this script to use a different font file.")
+    sys.exit(1)
+
+def get_font(size):
+    """
+    Returns a font object for the specified size.
+    Uses the font file specified by FONT_FILENAME in the assets folder.
+    """
+    try:
+        return ImageFont.truetype(font_path, size)
+    except Exception as e:
+        print(f"ERROR: Failed to load font: {font_path}")
+        print(f"Error details: {e}")
+        raise RuntimeError(f"Cannot load required font file: {font_path}")
+
 # Handle directory
-tmp_directory = "tmp"
+tmp_directory = os.path.join(SCRIPT_DIR, "tmp")
 if not os.path.exists(tmp_directory):
     os.makedirs(tmp_directory)
 
-directory_path = "image/map"
+directory_path = os.path.join(SCRIPT_DIR, "image", "map")
 if not os.path.exists(directory_path):
     print("image/map directory does not exist.")
     sys.exit(1)    
@@ -234,7 +261,7 @@ def analyze_image(image_path, image_name):
 
     draw = ImageDraw.Draw(resized_image)
     font_size = 12
-    font = ImageFont.truetype(font_path, font_size)
+    font = get_font(font_size)
 
     # sort by 'text'
     sorted_data = sorted(zip(data['text'], data['conf'], data['left'], data['top'], data['width'], data['height']), key=lambda x: x[0])
@@ -462,7 +489,7 @@ def draw_label(draw, message, position, font_size=30, fill="yellow"):
     :param fill: Color of the question mark.
     """
 
-    font = ImageFont.truetype(font_path, font_size)
+    font = get_font(font_size)
 
     # Calculate the size of the text
     text_bbox = draw.textbbox((0, 0), message, font=font)

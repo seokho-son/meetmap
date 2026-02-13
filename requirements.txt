@@ -1,10 +1,10 @@
-Flask==3.1.0
-numpy==2.2.1
-Pillow==11.0.0
-opencv-python-headless==4.10.0.84
+Flask==3.1.2
+numpy==2.4.2
+Pillow==12.1.1
+opencv-python-headless==4.13.0.92
 easyocr==1.7.2
-torch==2.5.1
-torchvision==0.20.1
-gunicorn==23.0.0
+torch==2.10.0
+torchvision==0.25.0
+gunicorn==25.0.3
 
 # For license information, see THIRD_PARTY_LICENSES
