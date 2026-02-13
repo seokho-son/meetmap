@@ -877,7 +877,7 @@ def view_room_highlighted(request_id):
                         background-color: rgba(0, 0, 0, 0.7);
                         padding: 0.5% 1%; 
                         border-radius: 0.5vw;
-                        font-family: Arial, sans-serif;
+                        font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
                         font-size: 2.1vw; 
                         cursor: pointer;
                     }}
@@ -909,7 +909,7 @@ def view_room_highlighted(request_id):
                         background-color: rgba(0, 0, 0, 0.7);
                         padding: 0.5% 1%; 
                         border-radius: 0.5vw;
-                        font-family: Arial, sans-serif;
+                        font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
                         font-size: 1.4vw; 
                     }}
                     .author-label {{
@@ -921,7 +921,7 @@ def view_room_highlighted(request_id):
                         text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
                         padding: 0.5% 1%; 
                         border-radius: 0.5vw;
-                        font-family: Arial, sans-serif;
+                        font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
                         font-size: 1.4vw; 
                         pointer-events: none;
                     }}                    
@@ -953,7 +953,7 @@ def view_room_highlighted(request_id):
                         background-color: rgba(0, 0, 255, 0.7);
                         padding: 0.1% 0.2%;
                         border-radius: 0.5vw;
-                        font-family: Arial, sans-serif;
+                        font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
                         font-size: 1.6vw; 
                     }}                      
                     .gate-label {{
@@ -965,7 +965,7 @@ def view_room_highlighted(request_id):
                         background-color: rgba(0, 0, 0, 0.5);
                         padding: 0.2% 0.4%; 
                         border-radius: 0.7vw;
-                        font-family: Arial, sans-serif;
+                        font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
                         font-size: 1.4vw; 
                         animation: blink3 8s infinite;
                     }}                                          
@@ -1446,7 +1446,7 @@ def view_room_highlighted(request_id):
                                         height: 100vh;
                                         margin: 0;
                                         background-color: #f0f0f0;
-                                        font-family: Arial, sans-serif;
+                                        font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
                                     }}
                                     #qrcode {{
                                         padding: 20px;
