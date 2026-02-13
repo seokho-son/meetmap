@@ -1,6 +1,6 @@
 {
     "1": {
-        "building_name": "행정동",
+        "building_name": "대전본원 1동 (행정동)",
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 50,
@@ -8,6 +8,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582441&urlY=801144"
     }, 
     "2": {
+        "building_name": "대전본원 2동",
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 5,
@@ -15,6 +16,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582167&urlY=801095"
     },
     "2-B": {
+        "building_name": "대전본원 2동",
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 7,
@@ -22,6 +24,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582167&urlY=801095"
     }, 
     "3": {
+        "building_name": "대전본원 3동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 94,
@@ -29,6 +32,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582220&urlY=801454"
     }, 
     "4": {
+        "building_name": "대전본원 4동",
         "north_x": 3,
         "north_y": 50,
         "main_gate_x": 91,
@@ -36,7 +40,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582068&urlY=801450"
     },
     "5": {
-        "building_name": "식당동(5동)",
+        "building_name": "대전본원 5동 (식당동)",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 92.7,
@@ -44,6 +48,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582176&urlY=801242"
     },
     "6": {
+        "building_name": "대전본원 6동",
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 50,
@@ -51,6 +56,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581873&urlY=801266"
     },
     "7": {
+        "building_name": "대전본원 7동",
         "north_x": 97,
         "north_y": 50,
         "main_gate_x": 50,
@@ -58,6 +64,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581870&urlY=801045"
     },
     "8": {
+        "building_name": "대전본원 8동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 50,
@@ -65,6 +72,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581920&urlY=801422"
     },
     "8-B": {
+        "building_name": "대전본원 8동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 9,
@@ -72,7 +80,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581920&urlY=801422"
     },
     "9": {
-        "building_name": "방문동(9동)",
+        "building_name": "대전본원 9동 (방문동)",
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 30,
@@ -80,6 +88,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582331&urlY=801675"
     },
     "10": {
+        "building_name": "대전본원 10동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 65,
@@ -87,6 +96,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581596&urlY=801381"
     },
     "10-2": {
+        "building_name": "대전본원 10동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 74.3,
@@ -94,6 +104,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581596&urlY=801381"
     },
     "10-3": {
+        "building_name": "대전본원 10동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 80.1,
@@ -101,6 +112,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581596&urlY=801381"
     },
     "11": {
+        "building_name": "대전본원 11동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 50.7,
@@ -108,6 +120,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581440&urlY=801507"
     },
     "12": {
+        "building_name": "대전본원 12동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 34,
@@ -115,6 +128,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582479&urlY=800721"
     },
     "13": {
+        "building_name": "대전본원 13동 (융합동)",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 37,
@@ -122,6 +136,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=583003&urlY=801714"
     },
     "13-B": {
+        "building_name": "대전본원 13동 (융합동)",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 30,
@@ -129,13 +144,13 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=583003&urlY=801714"
     },
     "901": {
-        "building_name": "동력동",
+        "building_name": "대전본원 동력동",
         "north_x": 50,
         "north_y": 3,
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582178&urlY=800885"
     },
     "902": {
-        "building_name": "드론시험동",
+        "building_name": "대전본원 드론시험동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 80,
@@ -143,7 +158,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=581648&urlY=801307"
     },
     "903": {
-        "building_name": "체육동",
+        "building_name": "대전본원 체육동",
         "north_x": 50,
         "north_y": 3,
         "main_gate_x": 7,
@@ -151,7 +166,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=582086&urlY=800753"
     },
     "701": {
-        "building_name": "대경권-본관",
+        "building_name": "대경권 1동 (본관)",
         "north_x": 22,
         "north_y": 3,
         "main_gate_x": 60.4,
@@ -159,7 +174,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=833071&urlY=611622"
     },
     "702": {
-        "building_name": "대경권-2동",
+        "building_name": "대경권 2동",
         "north_x": 50,
         "north_y": 97,
         "main_gate_x": 42.7,
@@ -167,7 +182,7 @@
         "skyview_link": "https://map.kakao.com/?map_type=TYPE_SKYVIEW&map_hybrid=true&urlLevel=1&urlX=833300&urlY=611679"
     },
     "801": {
-        "building_name": "호남권-본관",
+        "building_name": "호남권 1동 (본관)",
         "north_x": 3.1,
         "north_y": 23,
         "main_gate_x": 60.4,

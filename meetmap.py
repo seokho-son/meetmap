@@ -1,18 +1,126 @@
+# -*- coding: utf-8 -*-
 # SPDX-FileCopyrightText: Copyright 2024 Seokho Son <https://github.com/seokho-son/meetmap>
 # SPDX-License-Identifier: Apache-2.0
 
 # Importing necessary libraries
 import sys
+import time
 import numpy as np
 import re
 import os
 import json
+import threading
+import atexit
 import cv2  # OpenCV library for computer vision tasks
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from flask import Flask, send_from_directory, jsonify, request, send_file, Response
+import logging
 
 # Initializing Flask application
 app = Flask(__name__)
+
+# Suppress werkzeug default request logging and use custom selective logging
+_SUPPRESS_PATHS = ('/assets/', '/static/', '/favicon')
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+
+@app.after_request
+def _log_request(response):
+    """Selectively log requests, skipping noisy paths like favicon/static."""
+    path = request.path
+    if path == '/' or any(path.startswith(p) for p in _SUPPRESS_PATHS):
+        return response
+    print(f'{request.remote_addr} - "{request.method} {request.full_path.rstrip("?")}" {response.status_code}')
+    return response
+
+# --- Access counter (timestamp-based, last 100 days) ---
+ACCESS_COUNT_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'access-count.json')
+ACCESS_SAVE_INTERVAL = 10  # save to file every N increments
+ACCESS_WINDOW_DAYS = 100   # rolling window for Top 10 ranking
+
+_access_log = {}   # {room_id: [unix_timestamp, ...]}
+_access_lock = threading.Lock()
+_access_dirty = 0  # increments since last save
+
+
+def _prune_old_entries(log, cutoff):
+    """Remove timestamps older than cutoff; drop empty entries."""
+    return {rid: [t for t in ts if t > cutoff]
+            for rid, ts in log.items()
+            if any(t > cutoff for t in ts)}
+
+
+def _load_access_counter():
+    """Load persisted access log from JSON file."""
+    global _access_log
+    if os.path.exists(ACCESS_COUNT_FILE):
+        try:
+            with open(ACCESS_COUNT_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if data and isinstance(next(iter(data.values()), None), list):
+                cutoff = time.time() - ACCESS_WINDOW_DAYS * 86400
+                _access_log = _prune_old_entries(data, cutoff)
+                total = sum(len(v) for v in _access_log.values())
+                print(f"Loaded access log: {len(_access_log)} rooms, {total} recent accesses")
+            else:
+                # Old counter format (room_id: int) — no timestamps, start fresh
+                print("Migrating from legacy counter format — starting fresh time-based tracking")
+                _access_log = {}
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Could not load {ACCESS_COUNT_FILE}: {e}")
+            _access_log = {}
+
+
+def _save_access_counter():
+    """Atomically persist access log to JSON, pruning old entries."""
+    global _access_dirty
+    with _access_lock:
+        if _access_dirty == 0:
+            return
+        cutoff = time.time() - ACCESS_WINDOW_DAYS * 86400
+        pruned = _prune_old_entries(_access_log, cutoff)
+        _access_log.clear()
+        _access_log.update(pruned)
+        data = dict(_access_log)
+        _access_dirty = 0
+    tmp_path = ACCESS_COUNT_FILE + '.tmp'
+    try:
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp_path, ACCESS_COUNT_FILE)  # atomic on most OS
+    except IOError as e:
+        print(f"Warning: Could not save access counts: {e}")
+
+
+def increment_access_count(room_id):
+    """Thread-safe: append current timestamp to room's access log."""
+    global _access_dirty
+    with _access_lock:
+        if room_id not in _access_log:
+            _access_log[room_id] = []
+        _access_log[room_id].append(int(time.time()))
+        _access_dirty += 1
+        should_save = (_access_dirty >= ACCESS_SAVE_INTERVAL)
+    if should_save:
+        _save_access_counter()
+
+
+def get_top_accessed(n=20):
+    """Return top N rooms by access count within the last ACCESS_WINDOW_DAYS."""
+    cutoff = time.time() - ACCESS_WINDOW_DAYS * 86400
+    with _access_lock:
+        counts = []
+        for room_id, timestamps in _access_log.items():
+            recent = sum(1 for t in timestamps if t > cutoff)
+            if recent > 0:
+                counts.append((room_id, recent))
+    counts.sort(key=lambda x: x[1], reverse=True)
+    return counts[:n]
+
+
+# Load persisted log at startup
+_load_access_counter()
+# Save counts on normal shutdown
+atexit.register(_save_access_counter)
 
 # EasyOCR Reader - lazy loaded when OCR is actually needed
 # Dependencies: Requires PyTorch
@@ -544,25 +652,768 @@ def calculate_room_similarity(org_request_id, available_rooms):
 # Flask route definitions...
 
 @app.route('/', methods=['GET'])
+def menu():
+    """
+    Serve a directory menu page listing all available buildings, floors, and rooms.
+    Users can browse and navigate to specific room locations.
+    """
+    menu_results = load_results_from_json()
+    menu_alias_data = load_alias_data()
+    menu_note_data = load_note_data()
+    menu_tags_data = load_json_file(os.path.join(SCRIPT_DIR, 'map-tags.json')) if os.path.exists(os.path.join(SCRIPT_DIR, 'map-tags.json')) else {}
+    search_query = request.args.get('q', '')
+    top_accessed = get_top_accessed(10)
+
+    # Create reverse alias mapping (room_id -> alias names)
+    reverse_aliases = {}
+    bldg_aliases = {}
+    for alias_name, replacement in menu_alias_data.items():
+        if replacement.endswith("-"):
+            b_id = replacement.rstrip("-")
+            if b_id not in bldg_aliases:
+                bldg_aliases[b_id] = []
+            bldg_aliases[b_id].append(alias_name)
+        else:
+            if replacement not in reverse_aliases:
+                reverse_aliases[replacement] = []
+            reverse_aliases[replacement].append(alias_name)
+
+    # Group rooms by building and floor
+    buildings = {}
+    for room_id, room_info in menu_results.items():
+        floor_id_full = room_info['floor']
+        b_id, f_id = split_floor_id(floor_id_full)
+        if b_id not in buildings:
+            buildings[b_id] = {}
+        if f_id not in buildings[b_id]:
+            buildings[b_id][f_id] = []
+        aliases = reverse_aliases.get(room_id, [])
+        tags = menu_tags_data.get(room_id, [])
+        room_display = room_id[len(b_id)+1:] if room_id.startswith(b_id + "-") else room_id
+        buildings[b_id][f_id].append({
+            'id': room_id, 'display': room_display, 'aliases': aliases, 'tags': tags
+        })
+
+    # Add floor-only entries from image_names (floors without specific rooms)
+    for img_name in image_names:
+        if '-' in img_name:
+            b_id, f_id = split_floor_id(img_name)
+            if b_id not in buildings:
+                buildings[b_id] = {}
+            if f_id not in buildings[b_id]:
+                buildings[b_id][f_id] = []
+
+    # Sort helpers
+    def room_sort_key(room):
+        d = room['display']
+        parts = d.split('-')
+        try:
+            return (0, int(parts[0]), parts[1] if len(parts) > 1 else '')
+        except (ValueError, IndexError):
+            return (1, 0, d)
+
+    for b_id in buildings:
+        for f_id in buildings[b_id]:
+            buildings[b_id][f_id].sort(key=room_sort_key)
+
+    def get_building_name(b_id):
+        if b_id in menu_note_data and 'building_name' in menu_note_data[b_id]:
+            return menu_note_data[b_id]['building_name']
+        return f"{b_id}동"
+
+    def bldg_sort_key(b_id):
+        try:
+            return (0, int(b_id))
+        except ValueError:
+            return (1, 0)
+
+    def floor_sort_key(f_id):
+        order = {'B': -2, 'G': -1, 'L': 0}
+        if f_id.upper() in order:
+            return (order[f_id.upper()], '')
+        try:
+            return (1, int(f_id))
+        except ValueError:
+            return (2, f_id)
+
+    sorted_bldg_ids = sorted(buildings.keys(), key=bldg_sort_key)
+    total_rooms = len(menu_results)
+    total_buildings = len(buildings)
+
+    # Build HTML
+    html = []
+    html.append(f'''<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MeetMap</title>
+    <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+            line-height: 1.5;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #1a237e, #283593);
+            color: white;
+            padding: 20px 16px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }}
+        .header h1 {{ font-size: 1.4em; margin-bottom: 2px; }}
+        .header .subtitle {{ font-size: 0.85em; opacity: 0.8; }}
+        .search-container {{
+            max-width: 500px;
+            margin: 12px auto 0;
+            position: relative;
+        }}
+        .search-input {{
+            width: 100%;
+            padding: 10px 16px 10px 40px;
+            border: none;
+            border-radius: 25px;
+            font-size: 15px;
+            outline: none;
+            background: rgba(255,255,255,0.95);
+            color: #333;
+            font-family: inherit;
+        }}
+        .search-input::placeholder {{ color: #999; }}
+        .search-icon {{
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #888;
+            font-size: 16px;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 12px;
+        }}
+        .stats {{
+            text-align: center;
+            padding: 8px;
+            color: #666;
+            font-size: 0.85em;
+        }}
+        .building {{
+            margin-bottom: 10px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }}
+        .building-header {{
+            padding: 14px 16px;
+            background: #37474f;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }}
+        .building-header:hover {{ background: #455a64; }}
+        .building-header:active {{ background: #546e7a; }}
+        .building-name {{ font-size: 1.05em; font-weight: 600; }}
+        .building-aliases {{
+            font-size: 0.78em;
+            opacity: 0.7;
+            margin-top: 2px;
+        }}
+        .building-meta {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }}
+        .building-count {{
+            font-size: 0.78em;
+            background: rgba(255,255,255,0.2);
+            padding: 2px 8px;
+            border-radius: 12px;
+        }}
+        .toggle-icon {{
+            font-size: 0.8em;
+            transition: transform 0.2s;
+        }}
+        .building-content {{
+            display: none;
+        }}
+        .building-content.open {{ display: block; }}
+        .building.open .toggle-icon {{ transform: rotate(180deg); }}
+        .floor-section {{
+            border-bottom: 1px solid #eee;
+        }}
+        .floor-section:last-child {{ border-bottom: none; }}
+        .floor-header {{
+            padding: 10px 16px;
+            background: #eceff1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .floor-name {{
+            font-weight: 600;
+            font-size: 0.92em;
+            color: #37474f;
+        }}
+        .floor-link {{
+            font-size: 0.78em;
+            color: #1565c0;
+            text-decoration: none;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: #e3f2fd;
+        }}
+        .floor-link:hover {{ background: #bbdefb; }}
+        .room-grid {{
+            padding: 10px 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }}
+        .room-chip {{
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 7px 12px;
+            background: #e3f2fd;
+            color: #1565c0;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 0.88em;
+            transition: background 0.15s, color 0.15s;
+            border: 1px solid #bbdefb;
+            min-width: 50px;
+            text-align: center;
+        }}
+        .room-chip:hover {{
+            background: #1565c0;
+            color: white;
+            border-color: #1565c0;
+        }}
+        .room-chip:active {{
+            background: #0d47a1;
+            color: white;
+        }}
+        .room-chip .alias {{
+            font-size: 0.75em;
+            color: #666;
+            margin-top: 1px;
+        }}
+        .room-chip:hover .alias {{ color: rgba(255,255,255,0.8); }}
+        .room-chip .tag {{
+            display: inline-block;
+            font-size: 0.65em;
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }}
+        .room-chip:hover .tag {{ background: rgba(255,255,255,0.25); color: white; }}
+        .no-results {{
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+            font-size: 0.95em;
+            display: none;
+        }}
+        .empty-floor {{
+            padding: 10px 16px;
+            color: #aaa;
+            font-size: 0.85em;
+            font-style: italic;
+        }}
+        .footer {{
+            text-align: center;
+            padding: 20px;
+            color: #aaa;
+            font-size: 0.75em;
+        }}
+        .footer a {{ color: #999; }}
+        .hidden {{ display: none !important; }}
+        .top-section {{
+            margin-bottom: 12px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }}
+        .top-header {{
+            padding: 14px 16px;
+            background: #546e7a;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }}
+        .top-header:hover {{ background: #607d8b; }}
+        .top-title {{
+            font-size: 1.05em;
+            font-weight: 600;
+        }}
+        .top-subtitle {{
+            font-size: 0.78em;
+            opacity: 0.85;
+            margin-top: 2px;
+        }}
+        .top-content {{
+            display: none;
+        }}
+        .top-content.open {{ display: block; }}
+        .top-section .toggle-icon {{
+            font-size: 0.8em;
+            transition: transform 0.2s;
+            color: white;
+            transform: rotate(180deg);
+        }}
+        .top-section.open .toggle-icon {{ transform: rotate(0deg); }}
+        .top-grid {{
+            padding: 10px 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }}
+        .top-chip {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 14px;
+            background: white;
+            color: #222;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 0.9em;
+            transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+            border: 1px solid #ccc;
+            min-width: 60px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }}
+        .top-chip:hover {{
+            background: #1a237e;
+            color: white;
+            border-color: #1a237e;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }}
+        .top-chip:active {{
+            background: #0d1642;
+            color: white;
+        }}
+        .top-info {{
+            display: flex;
+            flex-direction: column;
+            line-height: 1.5;
+        }}
+        .top-bldg {{
+            font-weight: 600;
+        }}
+        .top-floor-room {{
+        }}
+        .top-alias {{
+            color: #555;
+            font-size: 0.85em;
+        }}
+        .top-chip:hover .top-alias {{ color: rgba(255,255,255,0.85); }}
+        .top-empty {{
+            padding: 16px;
+            text-align: center;
+            color: #aaa;
+            font-size: 0.85em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MeetMap <span style="font-size:0.7em; font-weight:300;">the Indoor Location Finder</span></h1>
+        <div class="subtitle" style="font-size:0.75em; opacity:0.55;">presented by Ph.D., Seokho Son</div>
+        <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="searchInput"
+                   placeholder="Search building, floor, room number or name..."
+                   autocomplete="off" value="{search_query}">
+        </div>
+    </div>
+    <div class="container">
+        <div class="stats">{total_buildings} Buildings · {total_rooms} Locations</div>
+''')
+
+    # Top 10 popular locations section
+    if top_accessed:
+        html.append('''<div class="top-section" id="topSection">
+    <div class="top-header" onclick="toggleTop()">
+        <div>
+            <div class="top-title">Top 10</div>
+            <div class="top-subtitle">Most viewed locations (last 100 days)</div>
+        </div>
+        <span class="toggle-icon">▲</span>
+    </div>
+    <div class="top-content" id="topContent">
+        <div class="top-grid">''')
+        for rank, (room_id, count) in enumerate(top_accessed, 1):
+            # Build display name with building/floor context
+            top_room = room_id
+            top_bldg = ''
+            top_floor = ''
+            if room_id in menu_results:
+                floor_full = menu_results[room_id]['floor']
+                b_tmp, f_tmp = split_floor_id(floor_full)
+                top_room = room_id[len(b_tmp)+1:] if room_id.startswith(b_tmp + "-") else room_id
+                top_bldg = get_building_name(b_tmp)
+                top_floor = f'{f_tmp}층'
+            elif room_id in image_names:
+                # Floor-level request
+                b_tmp, f_tmp = split_floor_id(room_id)
+                top_bldg = get_building_name(b_tmp)
+                top_room = ''
+                top_floor = f'{f_tmp}층'
+            # Line 1: building
+            bldg_html = f'<span class="top-bldg">{top_bldg}</span>' if top_bldg else ''
+            # Line 2: floor + room
+            floor_room_parts = [p for p in [top_floor, top_room] if p]
+            floor_room_text = ' '.join(floor_room_parts)
+            floor_room_html = f'<span class="top-floor-room">{floor_room_text}</span>' if floor_room_text else ''
+            # Line 3: aliases
+            alias_html = ''
+            if room_id in reverse_aliases and reverse_aliases[room_id]:
+                display_for_cmp = top_room if top_room else top_floor
+                meaningful = [a for a in reverse_aliases[room_id] if a.replace(' ', '') != display_for_cmp.replace(' ', '')]
+                if meaningful:
+                    alias_html = f'<span class="top-alias">{" · ".join(meaningful)}</span>'
+            html.append(f'            <a href="/r/{room_id}" class="top-chip" target="_blank"><span class="top-info">{bldg_html}{floor_room_html}{alias_html}</span></a>')
+        html.append('        </div>\n    </div>\n</div>')
+    else:
+        html.append('''<div class="top-section">
+    <div class="top-header" style="cursor: default;">
+        <div>
+            <div class="top-title">Top 10</div>
+            <div class="top-subtitle">Most viewed locations (last 100 days)</div>
+        </div>
+    </div>
+    <div class="top-content">
+        <div class="top-empty">No access history yet</div>
+    </div>
+</div>''')
+
+    html.append('''        <div id="buildingList">
+''')
+
+    for b_id in sorted_bldg_ids:
+        building_name = get_building_name(b_id)
+        b_al = bldg_aliases.get(b_id, [])
+
+        # Filter out aliases that are redundant with building_name
+        # An alias is redundant if every word is a substring of building_name,
+        # or if every character of the alias (ignoring spaces) appears in order within building_name
+        def _alias_redundant(alias, name):
+            words = alias.split()
+            if all(w in name for w in words):
+                return True
+            # Character-level check: all chars of alias found in name (for cases like 드론동 ⊂ 드론시험동)
+            chars = alias.replace(' ', '')
+            if all(ch in name for ch in chars):
+                return True
+            return False
+
+        b_al_filtered = [a for a in b_al if not _alias_redundant(a, building_name)]
+
+        # Remove words already in building_name from displayed aliases
+        def _trim_alias(alias, name):
+            return ' '.join(w for w in alias.split() if w not in name).strip()
+
+        b_al_display = [_trim_alias(a, building_name) or a for a in b_al_filtered]
+
+        floors = buildings[b_id]
+        sorted_floors = sorted(floors.keys(), key=floor_sort_key)
+        room_count = sum(len(floors[f]) for f in floors)
+
+        # Build search data for this building
+        search_parts = [b_id, building_name] + b_al
+        for f_id in sorted_floors:
+            search_parts.append(f_id)
+            for room in floors[f_id]:
+                search_parts.extend([room['id'], room['display']] + room['aliases'] + room.get('tags', []))
+        search_data = ' '.join(search_parts).lower().replace('"', ' ')
+
+        # Building-level text (for distinguishing building vs room match)
+        bldg_text = ' '.join([b_id, building_name] + b_al).lower().replace('"', ' ')
+
+        aliases_html = f'<div class="building-aliases">{", ".join(b_al_display)}</div>' if b_al_display else ''
+
+        html.append(f'''<div class="building" data-search="{search_data}" data-bldg="{bldg_text}">
+    <div class="building-header" onclick="toggleBuilding(this)">
+        <div>
+            <div class="building-name">{building_name}</div>
+            {aliases_html}
+        </div>
+        <div class="building-meta">
+            <span class="building-count">{room_count}</span>
+            <span class="toggle-icon">▼</span>
+        </div>
+    </div>
+    <div class="building-content">''')
+
+        for f_id in sorted_floors:
+            rooms = floors[f_id]
+            floor_display = f'{f_id}층'
+            floor_full_id = f'{b_id}-{f_id}'
+            has_floor_image = floor_full_id in image_names
+            floor_link = f'<a href="/r/{floor_full_id}" class="floor-link" target="_blank">Full floor view →</a>' if has_floor_image else ''
+
+            html.append(f'''
+        <div class="floor-section">
+            <div class="floor-header">
+                <span class="floor-name">{floor_display}</span>
+                {floor_link}
+            </div>''')
+
+            if rooms:
+                html.append('            <div class="room-grid">')
+                for room in rooms:
+                    alias_html = ''
+                    if room['aliases']:
+                        meaningful = [a for a in room['aliases'] if a.replace(' ', '') != room['display'].replace(' ', '')]
+                        if meaningful:
+                            alias_html = f'<span class="alias">{" · ".join(meaningful)}</span>'
+                    tags_html = ''.join(f'<span class="tag">{t}</span>' for t in room.get('tags', []))
+                    room_search = f"{room['id']} {room['display']} {' '.join(room['aliases'])} {' '.join(room.get('tags', []))}".lower().replace('"', ' ')
+                    html.append(f'                <a href="/r/{room["id"]}" class="room-chip" target="_blank" data-room="{room_search}">{room["display"]}{tags_html}{alias_html}</a>')
+                html.append('            </div>')
+            else:
+                html.append('            <div class="empty-floor">No individual locations (use full floor view)</div>')
+
+            html.append('        </div>')
+
+        html.append('    </div>\n</div>')
+
+    html.append('''
+        </div>
+        <div class="no-results" id="noResults">No results found</div>
+        <div class="footer">© Ph.D. Seokho Son · <a href="/api">API</a></div>
+    </div>
+    <script>
+        function toggleTop() {
+            var section = document.getElementById('topSection');
+            var content = document.getElementById('topContent');
+            if (section) {
+                section.classList.toggle('open');
+                content.classList.toggle('open');
+            }
+        }
+
+        function toggleBuilding(header) {
+            var building = header.closest('.building');
+            var content = building.querySelector('.building-content');
+            building.classList.toggle('open');
+            content.classList.toggle('open');
+        }
+
+        var searchInput = document.getElementById('searchInput');
+        var TAG_SYNONYMS = {
+            '화상': '영상',
+            '온라인': '영상'
+        };
+        searchInput.addEventListener('input', function() {
+            var query = this.value.trim().toLowerCase();
+            // Expand synonyms: also search canonical term
+            var queries = [query];
+            if (TAG_SYNONYMS[query]) {
+                queries.push(TAG_SYNONYMS[query]);
+            }
+            var buildings = document.querySelectorAll('.building');
+            var topSection = document.getElementById('topSection');
+            var hasResults = false;
+
+            if (!query) {
+                if (topSection) topSection.classList.remove('hidden');
+                buildings.forEach(function(b) {
+                    b.classList.remove('hidden', 'open');
+                    b.querySelector('.building-content').classList.remove('open');
+                    b.querySelectorAll('.room-chip').forEach(function(r) { r.classList.remove('hidden'); });
+                    b.querySelectorAll('.floor-section').forEach(function(f) { f.classList.remove('hidden'); });
+                });
+                document.getElementById('noResults').style.display = 'none';
+                return;
+            }
+
+            if (topSection) topSection.classList.add('hidden');
+
+            function matchesAny(text, qs) {
+                for (var i = 0; i < qs.length; i++) {
+                    if (text.indexOf(qs[i]) !== -1) return true;
+                }
+                return false;
+            }
+
+            buildings.forEach(function(building) {
+                var searchData = building.getAttribute('data-search');
+                if (!matchesAny(searchData, queries)) {
+                    building.classList.add('hidden');
+                    return;
+                }
+
+                building.classList.remove('hidden');
+                building.classList.add('open');
+                building.querySelector('.building-content').classList.add('open');
+                hasResults = true;
+
+                var bldgText = building.getAttribute('data-bldg');
+                var isBuildingMatch = matchesAny(bldgText, queries);
+
+                if (isBuildingMatch) {
+                    building.querySelectorAll('.room-chip').forEach(function(r) { r.classList.remove('hidden'); });
+                    building.querySelectorAll('.floor-section').forEach(function(f) { f.classList.remove('hidden'); });
+                } else {
+                    building.querySelectorAll('.floor-section').forEach(function(floor) {
+                        var chips = floor.querySelectorAll('.room-chip');
+                        var floorMatch = false;
+                        chips.forEach(function(chip) {
+                            var roomData = chip.getAttribute('data-room');
+                            if (matchesAny(roomData, queries)) {
+                                chip.classList.remove('hidden');
+                                floorMatch = true;
+                            } else {
+                                chip.classList.add('hidden');
+                            }
+                        });
+                        if (floorMatch) {
+                            floor.classList.remove('hidden');
+                        } else {
+                            floor.classList.add('hidden');
+                        }
+                    });
+                }
+            });
+
+            document.getElementById('noResults').style.display = hasResults ? 'none' : 'block';
+        });
+
+        // Trigger search if query parameter is present
+        if (searchInput.value) {
+            searchInput.dispatchEvent(new Event('input'));
+        }
+    </script>
+</body>
+</html>''')
+
+    return Response(''.join(html), content_type='text/html; charset=utf-8')
+
+
+@app.route('/api', methods=['GET'])
 def list_apis():
     """
     list all available API endpoints.
-    :return: JSON response with information about all routes.
+    :return: HTML page with information about all routes.
     """
-    routes = []
+    # Collect routes, skip internal ones
+    skip_endpoints = {'static', 'favicon'}
+    grouped = {}   # endpoint_name -> {methods, urls[], description}
     for rule in app.url_map.iter_rules():
-        methods = ','.join(sorted(rule.methods))
-        endpoint = rule.endpoint
+        ep = rule.endpoint
+        if ep in skip_endpoints:
+            continue
         url = str(rule)
-        doc = app.view_functions[endpoint].__doc__ if app.view_functions[endpoint].__doc__ else "No description available"
-        doc = doc.strip().replace('\n', ' ')
-        routes.append({
-            'endpoint': endpoint,
-            'methods': methods,
-            'url': url,
-            'description': doc
-        })
-    return jsonify(routes)
+        methods = sorted(rule.methods - {'OPTIONS', 'HEAD'})
+        if ep not in grouped:
+            doc = (app.view_functions[ep].__doc__ or '').strip()
+            # Take only the first sentence/line as summary
+            first_line = doc.split('\n')[0].strip()
+            # Remove leading docstring artifacts
+            for prefix in [':return:', ':param']:
+                if first_line.startswith(prefix):
+                    first_line = ''
+                    break
+            grouped[ep] = {
+                'methods': methods,
+                'urls': [],
+                'description': first_line if first_line else ''
+            }
+        grouped[ep]['urls'].append(url)
+
+    # Manual short descriptions (override verbose docstrings)
+    desc_overrides = {
+        'menu': 'Directory page — browse buildings, floors, and rooms (client-side search)',
+        'list_apis': 'This page — list of all API endpoints',
+        'list_room_ids': 'List all available room IDs and aliases (JSON)<br>'
+            '<code>key</code> or <code>k</code> — filter by keyword',
+        'get_alias': 'Reload and return alias mappings (JSON)',
+        'view_room_highlighted': 'View a room location on the floor map.<br>'
+            '<code>returnType=html</code> (default) — interactive web view<br>'
+            '<code>returnType=file</code> — floor map image (PNG)<br>'
+            '<code>returnType=json</code> — room location info (JSON)<br>'
+            '&nbsp;&nbsp;└ <code>strict=true</code> — disable fuzzy match (404 if no exact match)<br>'
+            '<code>note</code> / <code>n</code> / <code>label</code> / <code>title</code> — display note text on map<br>'
+            '<code>x</code>, <code>y</code> — mark a custom point on the map',
+        'validate_images': 'Generate and combine validation images for testing',
+    }
+    for ep, desc in desc_overrides.items():
+        if ep in grouped:
+            grouped[ep]['description'] = desc
+
+    # Build HTML
+    html = '''<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MeetMap API</title>
+<link rel="icon" href="/assets/favicon.ico">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',Arial,sans-serif;
+     background:#f0f2f5;color:#222;line-height:1.6}
+.wrap{max-width:700px;margin:0 auto;padding:16px}
+h1{font-size:1.3em;color:#fff;background:linear-gradient(135deg,#37474f,#546e7a);
+   padding:18px 20px;border-radius:10px;margin-bottom:16px;text-align:center}
+h1 small{display:block;font-size:0.6em;font-weight:400;opacity:0.85;margin-top:4px}
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom:10px;padding:14px 16px;transition:box-shadow 0.2s}
+.card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.13)}
+.ep-name{font-weight:600;font-size:1em;color:#37474f}
+.ep-desc{font-size:0.88em;color:#555;margin:4px 0 8px}
+.urls{display:flex;flex-wrap:wrap;gap:6px}
+.url-tag{display:inline-block;background:#e8eaf6;color:#283593;font-family:monospace;
+         font-size:0.82em;padding:3px 8px;border-radius:4px}
+.method{display:inline-block;background:#e0f2f1;color:#00695c;font-size:0.75em;
+        font-weight:600;padding:2px 6px;border-radius:3px;margin-right:6px;vertical-align:middle}
+.footer{text-align:center;padding:14px;font-size:0.8em;color:#888}
+.footer a{color:#546e7a;text-decoration:none}
+</style></head><body><div class="wrap">
+<h1>MeetMap API<small>Available Endpoints</small></h1>
+'''
+    # Preferred display order
+    order = ['menu', 'view_room_highlighted', 'list_room_ids', 'get_alias', 'validate_images', 'list_apis']
+    sorted_eps = [ep for ep in order if ep in grouped]
+    sorted_eps += [ep for ep in grouped if ep not in order]
+
+    for ep in sorted_eps:
+        info = grouped[ep]
+        methods_html = ''.join(f'<span class="method">{m}</span>' for m in info['methods'])
+        urls_html = ''.join(f'<span class="url-tag">{u}</span>' for u in sorted(info['urls']))
+        desc = info['description']
+        html += f'''<div class="card">
+<div class="ep-name">{methods_html}{ep}</div>
+{f'<div class="ep-desc">{desc}</div>' if desc else ''}
+<div class="urls">{urls_html}</div>
+</div>
+'''
+
+    html += '''<div class="footer">© Ph.D. Seokho Son · <a href="/">Menu</a></div>
+</div></body></html>'''
+    return Response(html, content_type='text/html; charset=utf-8')
 
 def sort_key(name):
     """
@@ -776,8 +1627,6 @@ def view_room_highlighted(request_id):
         if request_id in image_names:
             isFloorRequest = True
 
-        print(f"Original Request: {org_request_id} Adjusted Request: {request_id} (isFloorRequest: {isFloorRequest})") 
-
         # Check if request_id starts with any of the image names or if it exists in analyzed_results
         if request_id not in analyzed_results and not any(request_id.startswith(name.upper()) for name in image_names):
             response = {
@@ -792,11 +1641,13 @@ def view_room_highlighted(request_id):
 
         request_id, image_size, room_x, room_y, room_w, room_h, floor_id, building_id, floor_only_id, similar_room = search_and_get_room_info(request_id)
 
+        # Record access for popularity tracking
+        increment_access_count(request_id)
+
         if isFloorRequest:
             floor_id = request_id
             building_id, floor_only_id = split_floor_id(floor_id)
 
-        print(f"floor_id: {floor_id}, building_id: {building_id}, floor_only_id: {floor_only_id}")
         floor_image_path = os.path.join(tmp_directory, f"{floor_id}-map.png")
 
         skyview_image_base64, room_image_base64 = get_suppliment_images(room_id=request_id)
@@ -818,13 +1669,50 @@ def view_room_highlighted(request_id):
         return_type = request.args.get('returnType', '').lower()
 
         destinationLabelText = f"{request_id} ?" if similar_room else request_id
-        buildingText = f"{b_name}" if b_name else f"{building_id}동" 
+        buildingText = f"{b_name}" if b_name else f"{building_id}동"
         noteText = f"{note_param}" if note_param else ""
 
 
         if return_type == "file":
             # Return image file directly
             return send_file(floor_image_path, mimetype='image/png')
+        elif return_type == "json":
+            # Return room location info as JSON for programmatic use
+            strict_mode = request.args.get('strict', '').lower() in ('true', '1', 'yes')
+            if strict_mode and similar_room:
+                return Response(
+                    json.dumps({
+                        "found": False,
+                        "request_id": org_request_id,
+                        "message": f"No exact match for '{org_request_id}'."
+                    }, ensure_ascii=False),
+                    content_type="application/json; charset=utf-8",
+                    status=404
+                )
+            result = {
+                "found": True,
+                "exact_match": not bool(similar_room),
+                "request_id": org_request_id,
+                "room_id": request_id,
+                "building_id": building_id,
+                "building_name": buildingText,
+                "floor": floor_id,
+                "floor_id": floor_only_id,
+                "image_size": list(image_size) if image_size else None,
+                "location": {
+                    "x_ratio": room_x,
+                    "y_ratio": room_y,
+                    "w_ratio": room_w,
+                    "h_ratio": room_h
+                }
+            }
+            if similar_room:
+                result["similar_room"] = similar_room
+            return Response(
+                json.dumps(result, ensure_ascii=False),
+                content_type="application/json; charset=utf-8",
+                status=200
+            )
         else:
             # Use the Base64 encoded images in HTML
             html_template = f"""
@@ -880,6 +1768,17 @@ def view_room_highlighted(request_id):
                         font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', Arial, sans-serif;
                         font-size: 2.1vw; 
                         cursor: pointer;
+                        display: flex;
+                        align-items: baseline;
+                        gap: 0.5vw;
+                    }}
+                    .floor-identifier .fi-floor {{
+                        font-size: 1.3em;
+                        font-weight: bold;
+                    }}
+                    .floor-identifier .fi-bldg {{
+                        font-size: 0.75em;
+                        opacity: 0.8;
                     }}
                     .button-container {{
                         position: absolute;
@@ -933,6 +1832,7 @@ def view_room_highlighted(request_id):
                         background-color: rgba(255, 0, 0, 0.1);
                         pointer-events: none;
                         transform: translate(-50%, -50%);
+                        aspect-ratio: 1;
                         animation: blink1 3s infinite;
                     }}
                     .destination-box {{
@@ -1004,7 +1904,7 @@ def view_room_highlighted(request_id):
                     </div>
                     <img id="skyviewImage" src="data:image/png;base64,{skyview_image_base64}" style="display: none; position: absolute; top: 50%; left: 75%; transform: translate(-50%, -50%); max-width: 45%; max-height: 80%; pointer-events: none;" />
                     <img id="roomviewImage" src="data:image/png;base64,{room_image_base64}" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 80%; max-height: 80%; pointer-events: none;" />
-                    <div class="floor-identifier">{buildingText} {floor_only_id}층</div>
+                    <div class="floor-identifier"><span class="fi-floor">{floor_only_id}층</span><span class="fi-bldg">{buildingText}</span></div>
                 </div>
             
                 <script>
@@ -1075,9 +1975,7 @@ def view_room_highlighted(request_id):
                         const sourceBox = document.getElementById('sourceBox');
                         sourceBox.style.left = `${{xPercent}}%`;
                         sourceBox.style.top = `${{yPercent}}%`;
-                        sourceBox.style.width = '4%';  
-                        sourceBox.style.height = getComputedStyle(sourceBox).width;
-                        sourceBox.style.borderRadius = '50%';
+                        sourceBox.style.width = '4%';
                         sourceBox.style.display = 'block';
 
                         const sourceLabel = document.getElementById('sourceLabel');
@@ -1119,7 +2017,9 @@ def view_room_highlighted(request_id):
                         destinationBox.style.display = 'block';
 
                         const destinationLabel = document.getElementById('destinationLabel');
-                        let labelContent = `{org_request_id}<br>({destinationLabelText})`;
+                        const orgId = `{org_request_id}`;
+                        const destId = `{destinationLabelText}`;
+                        let labelContent = orgId === destId ? orgId : `${{orgId}}<br>(${{destId}})`;
                         destinationLabel.innerHTML = labelContent;
                         destinationLabel.style.left = `${{roomX}}%`;
                         destinationLabel.style.top = `${{roomY + roomH /2 + 1}}%`;
@@ -1133,7 +2033,6 @@ def view_room_highlighted(request_id):
                         sourceBox.style.left = `${{x}}%`;
                         sourceBox.style.top = `${{y}}%`;
                         sourceBox.style.width = '4%';
-                        sourceBox.style.height = getComputedStyle(sourceBox).width;
                         sourceBox.style.display = 'block';
 
                         const sourceLabel = document.getElementById('sourceLabel');
@@ -1179,11 +2078,18 @@ def view_room_highlighted(request_id):
                     }}                
 
                     function updateBoxSize() {{
+                        // Use image container's actual width instead of viewport width
+                        // so fonts scale with the image, not the browser window
+                        const container = document.querySelector('.image-container');
+                        const cw = container.offsetWidth / 100; // 1% of container width in px
+
                         const sourceBox = document.getElementById('sourceBox');
-                        
                         const sourceLabel = document.getElementById('sourceLabel');
                         const floorIdentifier = document.querySelector('.floor-identifier');
                         const mousePosition = document.querySelector('.mouse-position');
+                        const authorLabel = document.querySelector('.author-label');
+                        const northLabel = document.getElementById('northLabel');
+                        const mainGateLabel = document.getElementById('mainGateLabel');
                         const toggleSkyviewButton = document.getElementById('toggleSkyviewButton');
                         const toggleRoomviewButton = document.getElementById('toggleRoomviewButton');
                         const shareWindowButton = document.getElementById('shareWindowButton');
@@ -1194,36 +2100,50 @@ def view_room_highlighted(request_id):
                         const borderThickness = 0.4;
 
                         sourceBox.style.width = `${{boxSize}}%`;
-                        sourceBox.style.height = getComputedStyle(sourceBox).width;
-                        sourceBox.style.borderWidth = `${{borderThickness}}vw`;
+                        sourceBox.style.borderWidth = `${{cw * borderThickness}}px`;
                         
-                        floorIdentifier.style.fontSize = `${{fontSize + 0.5}}vw`;
+                        floorIdentifier.style.fontSize = `${{cw * (fontSize + 0.5)}}px`;
                         floorIdentifier.style.padding = `${{padding}}% 1%`;
-                        mousePosition.style.fontSize = `${{fontSize - 0.2}}vw`;
-                        sourceLabel.style.fontSize = `${{fontSize}}vw`;
+                        floorIdentifier.style.borderRadius = `${{cw * 0.5}}px`;
+                        mousePosition.style.fontSize = `${{cw * (fontSize - 0.2)}}px`;
+                        mousePosition.style.borderRadius = `${{cw * 0.5}}px`;
+                        if (authorLabel) {{
+                            authorLabel.style.fontSize = `${{cw * (fontSize - 0.2)}}px`;
+                        }}
+                        sourceLabel.style.fontSize = `${{cw * fontSize}}px`;
                         sourceLabel.style.padding = `${{padding}}% 1%`;
+                        sourceLabel.style.borderRadius = `${{cw * 0.5}}px`;
+
+                        if (northLabel) {{
+                            northLabel.style.fontSize = `${{cw * (fontSize - 0.2)}}px`;
+                            northLabel.style.borderRadius = `${{cw * 0.7}}px`;
+                        }}
+                        if (mainGateLabel) {{
+                            mainGateLabel.style.fontSize = `${{cw * (fontSize - 0.2)}}px`;
+                            mainGateLabel.style.borderRadius = `${{cw * 0.7}}px`;
+                        }}
                         
                         if (!isFloorRequest) {{
                             const destinationBox = document.getElementById('destinationBox');
                             const destinationLabel = document.getElementById('destinationLabel');
-                            destinationBox.style.borderWidth = `${{borderThickness}}vw`;
-                            destinationLabel.style.fontSize = `${{fontSize}}vw`;
-                            destinationLabel.style.padding = `${{padding}}% 1%`;                        
+                            destinationBox.style.borderWidth = `${{cw * borderThickness}}px`;
+                            destinationLabel.style.fontSize = `${{cw * fontSize}}px`;
+                            destinationLabel.style.padding = `${{padding}}% 1%`;
+                            destinationLabel.style.borderRadius = `${{cw * 0.5}}px`;
                         }}
 
-                        
                         if (toggleRoomviewButton) {{
-                            toggleRoomviewButton.style.fontSize = `${{fontSize}}vw`;
+                            toggleRoomviewButton.style.fontSize = `${{cw * fontSize}}px`;
                             toggleRoomviewButton.style.padding = `${{padding}}% 2%`;
                         }}
                         
                         if (toggleSkyviewButton) {{
-                            toggleSkyviewButton.style.fontSize = `${{fontSize}}vw`;
+                            toggleSkyviewButton.style.fontSize = `${{cw * fontSize}}px`;
                             toggleSkyviewButton.style.padding = `${{padding}}% 2%`;
                         }}
 
                         if (shareWindowButton) {{
-                            shareWindowButton.style.fontSize = `${{fontSize}}vw`;
+                            shareWindowButton.style.fontSize = `${{cw * fontSize}}px`;
                             shareWindowButton.style.padding = `${{padding}}% 2%`;
                         }}
 
@@ -1248,12 +2168,12 @@ def view_room_highlighted(request_id):
 
                     // Add event listeners for floorIdentifier
                     const floorIdentifier = document.querySelector('.floor-identifier');
-                    floorIdentifier.addEventListener('mouseover', function() {{
-                        floorIdentifier.textContent = 'Copy URL';
+                    floorIdentifier.addEventListener('mouseenter', function() {{
+                        floorIdentifier.innerHTML = '<span class="fi-floor">Copy URL</span>';
                     }});
 
-                    floorIdentifier.addEventListener('mouseout', function() {{
-                        floorIdentifier.textContent = '{buildingText} {floor_only_id}층';
+                    floorIdentifier.addEventListener('mouseleave', function() {{
+                        floorIdentifier.innerHTML = '<span class="fi-floor">{floor_only_id}층</span><span class="fi-bldg">{buildingText}</span>';
                     }});
 
                     floorIdentifier.addEventListener('click', function() {{
@@ -1922,6 +2842,5 @@ if __name__ == '__main__':
         save_results_to_json(analyzed_results, json_file)  # Save the analyzed results to a new map.json file
 
     # Start the Flask server
-        # Run the Flask app with debug mode on, accessible on all interfaces on port 80
+    # app.run(debug=False, host='0.0.0.0', port=5000)  
     app.run(debug=False, host='0.0.0.0', port=80)  
-

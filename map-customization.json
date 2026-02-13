@@ -90,6 +90,48 @@
         "w_ratio": 10,
         "h_ratio": 6
     },   
+    "7-도서관2소통1": {
+        "floor": "7-2",
+        "x_ratio": 38.6,
+        "y_ratio": 34.6,
+        "w_ratio": 3,
+        "h_ratio": 4
+    },   
+    "7-도서관2소통2": {
+        "floor": "7-2",
+        "x_ratio": 34.7,
+        "y_ratio": 34.6,
+        "w_ratio": 3,
+        "h_ratio": 4
+    },        
+    "7-도서관2소통3": {
+        "floor": "7-2",
+        "x_ratio": 38.6,
+        "y_ratio": 18.5,
+        "w_ratio": 3,
+        "h_ratio": 4
+    },  
+    "7-도서관2소통4": {
+        "floor": "7-2",
+        "x_ratio": 34.7,
+        "y_ratio": 18.5,
+        "w_ratio": 3,
+        "h_ratio": 4
+    },        
+    "7-도서관2몰입1": {
+        "floor": "7-2",
+        "x_ratio": 34.7,
+        "y_ratio": 30.1,
+        "w_ratio": 4,
+        "h_ratio": 4
+    },   
+    "7-도서관2몰입2": {
+        "floor": "7-2",
+        "x_ratio": 34.7,
+        "y_ratio": 25.9,
+        "w_ratio": 4,
+        "h_ratio": 4
+    },                             
     "4-광RF실험실": {
         "floor": "4-G",
         "x_ratio": 66.1,
