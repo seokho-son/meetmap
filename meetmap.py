@@ -10,16 +10,26 @@ import json
 import cv2  # OpenCV library for computer vision tasks
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 from flask import Flask, send_from_directory, jsonify, request, send_file, Response
-import easyocr  # EasyOCR library for text recognition
 
 # Initializing Flask application
 app = Flask(__name__)
 
-# Initialize EasyOCR Reader
+# EasyOCR Reader - lazy loaded when OCR is actually needed
 # Dependencies: Requires PyTorch
 # Legal Notice: Enabling GPU mode (gpu=True) subjects this usage to NVIDIA EULA as it utilizes NVIDIA CUDA
 #              CPU mode (gpu=False) operates without NVIDIA CUDA components
-reader = easyocr.Reader(['en'], gpu=True)  # GPU/CPU mode can be configured as needed
+reader = None  # Will be initialized on first OCR use
+
+def get_ocr_reader():
+    """
+    Lazily initializes and returns the EasyOCR reader.
+    This allows the application to run without easyocr/pytorch if OCR is not needed.
+    """
+    global reader
+    if reader is None:
+        import easyocr  # EasyOCR library for text recognition
+        reader = easyocr.Reader(['en'], gpu=True)  # GPU/CPU mode can be configured as needed
+    return reader
 
 # NanumSquareL.ttf Font License - https://help.naver.com/service/30016/contents/18088?osType=PC&lang=ko
 font_path = "assets/NanumSquareL.ttf"
@@ -200,8 +210,9 @@ def analyze_image(image_path, image_name):
         # Convert the PIL image to a format compatible with EasyOCR
         image_np = np.array(image)  # Convert to numpy array (EasyOCR can use this directly)
         
-        # Run EasyOCR
-        results = reader.readtext(image_np, allowlist ='0123456789LGB-', detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
+        # Run EasyOCR (lazy load the reader)
+        ocr_reader = get_ocr_reader()
+        results = ocr_reader.readtext(image_np, allowlist ='0123456789LGB-', detail=1, paragraph=False)  # detail=1 includes bounding boxes and confidence
 
         for (bbox, text, confidence) in results:
             if confidence > 0.4:  # Only consider results with the confidence
